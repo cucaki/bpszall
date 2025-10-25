@@ -364,6 +364,16 @@
                     </div>
                 </div>
                 
+                <!-- Optimalized route preview -->
+                <div id="route-preview" style="display: none; background: #f0f7ff; padding: 15px; border-radius: 6px; margin-top: 15px; border: 2px solid #2196F3;">
+                    <div style="font-weight: 600; margin-bottom: 10px; color: #1976D2;">
+                        🗺️ Optimalizált útvonal:
+                    </div>
+                    <div id="route-preview-content" style="font-size: 13px;">
+                        <!-- Will be filled by JavaScript -->
+                    </div>
+                </div>
+                
                 <div class="action-buttons">
                     <div style="background: #f0f7ff; padding: 12px; border-radius: 6px; margin-bottom: 10px;">
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px;">
@@ -759,6 +769,99 @@
             document.getElementById('selected-orders').textContent = selectedOrders.size;
             
             document.getElementById('plan-route-btn').disabled = selectedOrders.size === 0;
+            
+            // Update route preview
+            updateRoutePreview();
+        }
+        
+        // Update route preview panel
+        async function updateRoutePreview() {
+            const optimizeEnabled = document.getElementById('optimize-route').checked;
+            const startPoint = document.getElementById('start-point').value.trim();
+            const selected = orders.filter(o => selectedOrders.has(o.orderNumber));
+            
+            const previewDiv = document.getElementById('route-preview');
+            const contentDiv = document.getElementById('route-preview-content');
+            
+            // Hide if optimization disabled or no selection or no start point
+            if (!optimizeEnabled || selected.length === 0 || !startPoint) {
+                previewDiv.style.display = 'none';
+                return;
+            }
+            
+            // Show preview
+            previewDiv.style.display = 'block';
+            contentDiv.innerHTML = '<div style="color: #666;">Útvonal számítása...</div>';
+            
+            try {
+                // Geocode start point
+                const startCoords = await geocodeAddress(startPoint);
+                if (!startCoords) {
+                    contentDiv.innerHTML = '<div style="color: #d32f2f;">❌ Nem sikerült geokódolni a kezdőpontot</div>';
+                    return;
+                }
+                
+                // Calculate distances
+                const withDistances = selected
+                    .filter(o => o.lat && o.lon)
+                    .map(o => ({
+                        ...o,
+                        distance: calculateDistance(startCoords.lat, startCoords.lon, o.lat, o.lon)
+                    }));
+                
+                if (withDistances.length === 0) {
+                    contentDiv.innerHTML = '<div style="color: #d32f2f;">❌ Nincs geokódolt cím</div>';
+                    return;
+                }
+                
+                // Sort by distance (descending)
+                withDistances.sort((a, b) => b.distance - a.distance);
+                
+                // Build preview HTML
+                let html = `
+                    <div style="padding: 8px; background: white; border-radius: 4px; margin-bottom: 8px;">
+                        <strong>🏁 START:</strong> ${startPoint}
+                    </div>
+                `;
+                
+                withDistances.forEach((order, index) => {
+                    const emoji = index === 0 ? '🎯' : '📍';
+                    const bgColor = index === 0 ? '#fff3cd' : 'white';
+                    const label = index === 0 ? 'ELSŐ (legtávolabbi)' : '';
+                    
+                    html += `
+                        <div style="padding: 8px; background: ${bgColor}; border-radius: 4px; margin-bottom: 6px; border-left: 3px solid #2196F3;">
+                            <div style="font-weight: 600; color: #1976D2;">
+                                ${emoji} ${index + 1}. ${label}
+                            </div>
+                            <div style="margin-top: 4px;">
+                                <strong>${order.name}</strong>
+                            </div>
+                            <div style="color: #666; font-size: 12px;">
+                                📞 ${order.phone}
+                            </div>
+                            <div style="color: #666; font-size: 12px;">
+                                📍 ${order.address}
+                            </div>
+                            <div style="color: #2196F3; font-size: 12px; margin-top: 4px;">
+                                ↔ ${order.distance.toFixed(1)} km (légvonalban)
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += `
+                    <div style="padding: 8px; background: #c8e6c9; border-radius: 4px; margin-top: 8px;">
+                        <strong>🏠 VISSZA:</strong> ${startPoint}
+                    </div>
+                `;
+                
+                contentDiv.innerHTML = html;
+                
+            } catch (error) {
+                console.error('Error updating route preview:', error);
+                contentDiv.innerHTML = '<div style="color: #d32f2f;">❌ Hiba az útvonal számításakor</div>';
+            }
         }
         
         // Plan route with Google Maps
@@ -849,6 +952,20 @@
                 updateMap();
                 updateStats();
             });
+        });
+        
+        // Optimization checkbox change
+        document.getElementById('optimize-route').addEventListener('change', () => {
+            updateRoutePreview();
+        });
+        
+        // Start point input change
+        document.getElementById('start-point').addEventListener('input', () => {
+            // Debounce the preview update
+            clearTimeout(window.startPointTimeout);
+            window.startPointTimeout = setTimeout(() => {
+                updateRoutePreview();
+            }, 1000);
         });
         
         // Initialize
