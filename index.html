@@ -253,6 +253,20 @@
             cursor: not-allowed;
         }
         
+        .btn-success {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #45a049;
+        }
+        
+        .btn-success:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
         .stats {
             background: #f9f9f9;
             padding: 12px;
@@ -290,6 +304,59 @@
             height: 100%;
             background: #4CAF50;
             transition: width 0.3s;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        .input-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .input-group select,
+        .input-group input[type="time"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        .route-times {
+            background: #fff9e6;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 13px;
+            border: 2px solid #ffc107;
+        }
+        
+        .time-entry {
+            padding: 6px 0;
+            border-bottom: 1px dashed #e0e0e0;
+        }
+        
+        .time-entry:last-child {
+            border-bottom: none;
+        }
+        
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #route-preview, #route-preview * {
+                visibility: visible;
+            }
+            #route-preview {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+            }
         }
     </style>
 </head>
@@ -372,6 +439,16 @@
                     <div id="route-preview-content" style="font-size: 13px;">
                         <!-- Will be filled by JavaScript -->
                     </div>
+                    
+                    <!-- Route summary -->
+                    <div id="route-summary" style="display: none; background: #e8f5e9; padding: 12px; border-radius: 6px; margin-top: 12px;">
+                        <div style="font-weight: 600; color: #2e7d32; margin-bottom: 8px;">📊 Összesítés:</div>
+                        <div style="font-size: 12px; color: #1b5e20;">
+                            <div style="margin-bottom: 4px;">🚗 Teljes távolság: <strong><span id="total-distance">0</span> km</strong> (légvonalban)</div>
+                            <div style="margin-bottom: 4px;">⏱️ Becsült idő: <strong><span id="total-time">0</span> perc</strong> (10 perc/megálló)</div>
+                            <div>🏁 Várható befejezés: <strong><span id="estimated-finish">-</span></strong></div>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="action-buttons">
@@ -380,15 +457,39 @@
                             <input type="checkbox" id="optimize-route" checked style="width: 18px; height: 18px;">
                             <span>
                                 <strong>Optimalizált útvonal</strong><br>
-                                <small style="color: #666;">• Legtávolabbi cím ELSŐ megálló (fix)<br>
+                                <small style="color: #666;">• Kiválasztott cím ELSŐ megálló<br>
                                 • Többi: távolság szerint hazafelé<br>
                                 • Vissza a kezdőponthoz</small>
                             </span>
                         </label>
+                        
+                        <!-- First stop selector -->
+                        <div id="first-stop-selector" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;">
+                            <label for="first-stop-select" style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 13px;">
+                                🎯 Első megálló kiválasztása:
+                            </label>
+                            <select id="first-stop-select" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;">
+                                <option value="">Legtávolabbi (automatikus)</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Start time selector -->
+                        <div id="start-time-selector" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;">
+                            <label for="start-time-input" style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 13px;">
+                                🕐 Indulási időpont:
+                            </label>
+                            <input type="time" id="start-time-input" value="09:00" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;">
+                        </div>
                     </div>
                     
                     <button class="btn btn-primary" id="plan-route-btn" disabled>
                         🗺️ Útvonal tervezése (Google Maps)
+                    </button>
+                    <button class="btn btn-success" id="export-route-btn" disabled>
+                        📄 Útvonal exportálása (CSV)
+                    </button>
+                    <button class="btn btn-primary" id="print-route-btn" disabled>
+                        🖨️ Útvonallap nyomtatása
                     </button>
                     <button class="btn btn-primary" id="select-all-btn" disabled>
                         ✓ Összes kijelölése
@@ -593,6 +694,19 @@
             return R * c;
         }
         
+        // Calculate estimated time from distance (very rough estimate: assume 50km/h average speed + 10 min per stop)
+        function estimateTravelTime(distanceKm) {
+            return Math.round(distanceKm * 1.2); // 1.2 min per km (very conservative for city driving)
+        }
+        
+        // Add minutes to time string
+        function addMinutesToTime(timeStr, minutes) {
+            const [hours, mins] = timeStr.split(':').map(Number);
+            const date = new Date();
+            date.setHours(hours, mins + minutes, 0, 0);
+            return date.toTimeString().slice(0, 5);
+        }
+        
         // Read Excel file
         document.getElementById('file-upload').addEventListener('change', async function(e) {
             const file = e.target.files[0];
@@ -715,6 +829,30 @@
             renderOrders();
             updateMap();
             updateStats();
+            updateFirstStopSelector();
+        }
+        
+        // Update first stop selector dropdown
+        function updateFirstStopSelector() {
+            const selected = orders.filter(o => selectedOrders.has(o.orderNumber));
+            const selector = document.getElementById('first-stop-select');
+            const container = document.getElementById('first-stop-selector');
+            const optimizeEnabled = document.getElementById('optimize-route').checked;
+            
+            if (selected.length > 0 && optimizeEnabled) {
+                container.style.display = 'block';
+                
+                // Rebuild options
+                selector.innerHTML = '<option value="">Legtávolabbi (automatikus)</option>';
+                selected.forEach(order => {
+                    const option = document.createElement('option');
+                    option.value = order.orderNumber;
+                    option.textContent = `${order.name} - ${order.address}`;
+                    selector.appendChild(option);
+                });
+            } else {
+                container.style.display = 'none';
+            }
         }
         
         // Update map markers
@@ -744,6 +882,8 @@
                             📞 ${order.phone}<br>
                             📍 ${order.address}<br>
                             <span style="background: ${color}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px;">${order.status}</span>
+                            ${order.items ? '<br><br><strong>Tételek:</strong><br>' + order.items : ''}
+                            ${order.note ? '<br><br><strong>Megjegyzés:</strong><br>' + order.note : ''}
                         `)
                         .addTo(map);
                     
@@ -768,23 +908,124 @@
             document.getElementById('total-orders').textContent = filteredOrders.length;
             document.getElementById('selected-orders').textContent = selectedOrders.size;
             
-            document.getElementById('plan-route-btn').disabled = selectedOrders.size === 0;
+            const hasSelection = selectedOrders.size > 0;
+            document.getElementById('plan-route-btn').disabled = !hasSelection;
+            document.getElementById('export-route-btn').disabled = !hasSelection;
+            document.getElementById('print-route-btn').disabled = !hasSelection;
+            
+            // Show/hide time selector
+            const optimizeEnabled = document.getElementById('optimize-route').checked;
+            document.getElementById('start-time-selector').style.display = (hasSelection && optimizeEnabled) ? 'block' : 'none';
             
             // Update route preview
             updateRoutePreview();
         }
         
+        // Get optimized route
+        async function getOptimizedRoute() {
+            const startPoint = document.getElementById('start-point').value.trim();
+            const selected = orders.filter(o => selectedOrders.has(o.orderNumber));
+            const firstStopOrderNum = document.getElementById('first-stop-select').value;
+            const startTime = document.getElementById('start-time-input').value;
+            
+            if (!startPoint || selected.length === 0) return null;
+            
+            // Geocode start point
+            const startCoords = await geocodeAddress(startPoint);
+            if (!startCoords) return null;
+            
+            // Calculate distances
+            const withDistances = selected
+                .filter(o => o.lat && o.lon)
+                .map(o => ({
+                    ...o,
+                    distance: calculateDistance(startCoords.lat, startCoords.lon, o.lat, o.lon)
+                }));
+            
+            if (withDistances.length === 0) return null;
+            
+            let orderedStops;
+            
+            if (firstStopOrderNum) {
+                // Manual first stop selection
+                const firstStop = withDistances.find(o => o.orderNumber === firstStopOrderNum);
+                const others = withDistances.filter(o => o.orderNumber !== firstStopOrderNum);
+                
+                if (firstStop) {
+                    // Sort others by distance from first stop (descending)
+                    others.forEach(o => {
+                        o.distanceFromFirst = calculateDistance(firstStop.lat, firstStop.lon, o.lat, o.lon);
+                    });
+                    others.sort((a, b) => b.distanceFromFirst - a.distanceFromFirst);
+                    
+                    orderedStops = [firstStop, ...others];
+                }
+            } else {
+                // Automatic: farthest first
+                withDistances.sort((a, b) => b.distance - a.distance);
+                orderedStops = withDistances;
+            }
+            
+            // Calculate times and cumulative distances
+            let cumulativeTime = 0;
+            let totalDistance = 0;
+            let currentTime = startTime;
+            
+            const route = orderedStops.map((stop, index) => {
+                if (index === 0) {
+                    // First stop: distance from start
+                    const travelTime = estimateTravelTime(stop.distance);
+                    currentTime = addMinutesToTime(currentTime, travelTime);
+                    totalDistance += stop.distance;
+                    cumulativeTime += travelTime + 10; // travel + 10 min stop
+                } else {
+                    // Subsequent stops: distance from previous
+                    const prevStop = orderedStops[index - 1];
+                    const dist = calculateDistance(prevStop.lat, prevStop.lon, stop.lat, stop.lon);
+                    const travelTime = estimateTravelTime(dist);
+                    currentTime = addMinutesToTime(currentTime, travelTime + 10); // previous stop time + travel
+                    totalDistance += dist;
+                    cumulativeTime += travelTime + 10;
+                }
+                
+                return {
+                    ...stop,
+                    arrivalTime: currentTime,
+                    index: index + 1
+                };
+            });
+            
+            // Calculate return distance
+            if (orderedStops.length > 0) {
+                const lastStop = orderedStops[orderedStops.length - 1];
+                const returnDist = calculateDistance(lastStop.lat, lastStop.lon, startCoords.lat, startCoords.lon);
+                totalDistance += returnDist;
+                const returnTime = estimateTravelTime(returnDist);
+                cumulativeTime += returnTime;
+                currentTime = addMinutesToTime(currentTime, 10 + returnTime); // last stop time + return
+            }
+            
+            return {
+                route,
+                totalDistance: totalDistance.toFixed(1),
+                totalTime: cumulativeTime,
+                finishTime: currentTime,
+                startPoint,
+                startTime
+            };
+        }
+        
         // Update route preview panel
         async function updateRoutePreview() {
             const optimizeEnabled = document.getElementById('optimize-route').checked;
-            const startPoint = document.getElementById('start-point').value.trim();
             const selected = orders.filter(o => selectedOrders.has(o.orderNumber));
             
             const previewDiv = document.getElementById('route-preview');
             const contentDiv = document.getElementById('route-preview-content');
+            const summaryDiv = document.getElementById('route-summary');
             
-            // Hide if optimization disabled or no selection or no start point
-            if (!optimizeEnabled || selected.length === 0 || !startPoint) {
+            // Hide if optimization disabled or no selection
+            if (!optimizeEnabled || selected.length === 0) {
                 previewDiv.style.display = 'none';
                 return;
             }
@@ -792,76 +1033,65 @@
             // Show preview
             previewDiv.style.display = 'block';
             contentDiv.innerHTML = '<div style="color: #666;">Útvonal számítása...</div>';
+            summaryDiv.style.display = 'none';
             
-            try {
-                // Geocode start point
-                const startCoords = await geocodeAddress(startPoint);
-                if (!startCoords) {
-                    contentDiv.innerHTML = '<div style="color: #d32f2f;">❌ Nem sikerült geokódolni a kezdőpontot</div>';
-                    return;
-                }
-                
-                // Calculate distances
-                const withDistances = selected
-                    .filter(o => o.lat && o.lon)
-                    .map(o => ({
-                        ...o,
-                        distance: calculateDistance(startCoords.lat, startCoords.lon, o.lat, o.lon)
-                    }));
-                
-                if (withDistances.length === 0) {
-                    contentDiv.innerHTML = '<div style="color: #d32f2f;">❌ Nincs geokódolt cím</div>';
-                    return;
-                }
-                
-                // Sort by distance (descending)
-                withDistances.sort((a, b) => b.distance - a.distance);
-                
-                // Build preview HTML
-                let html = `
-                    <div style="padding: 8px; background: white; border-radius: 4px; margin-bottom: 8px;">
-                        <strong>🏁 START:</strong> ${startPoint}
-                    </div>
-                `;
-                
-                withDistances.forEach((order, index) => {
-                    const emoji = index === 0 ? '🎯' : '📍';
-                    const bgColor = index === 0 ? '#fff3cd' : 'white';
-                    const label = index === 0 ? 'ELSŐ (legtávolabbi)' : '';
-                    
-                    html += `
-                        <div style="padding: 8px; background: ${bgColor}; border-radius: 4px; margin-bottom: 6px; border-left: 3px solid #2196F3;">
-                            <div style="font-weight: 600; color: #1976D2;">
-                                ${emoji} ${index + 1}. ${label}
-                            </div>
-                            <div style="margin-top: 4px;">
-                                <strong>${order.name}</strong>
-                            </div>
-                            <div style="color: #666; font-size: 12px;">
-                                📞 ${order.phone}
-                            </div>
-                            <div style="color: #666; font-size: 12px;">
-                                📍 ${order.address}
-                            </div>
-                            <div style="color: #2196F3; font-size: 12px; margin-top: 4px;">
-                                ↔ ${order.distance.toFixed(1)} km (légvonalban)
-                            </div>
-                        </div>
-                    `;
-                });
+            const routeData = await getOptimizedRoute();
+            
+            if (!routeData) {
+                contentDiv.innerHTML = '<div style="color: #d32f2f;">❌ Nem sikerült kiszámolni az útvonalat</div>';
+                return;
+            }
+            
+            const { route, totalDistance, totalTime, finishTime, startPoint, startTime } = routeData;
+            
+            // Build preview HTML
+            let html = `
+                <div style="padding: 8px; background: white; border-radius: 4px; margin-bottom: 8px;">
+                    <strong>🏁 START (${startTime}):</strong> ${startPoint}
+                </div>
+            `;
+            
+            route.forEach((stop, index) => {
+                const emoji = index === 0 ? '🎯' : '📍';
+                const bgColor = index === 0 ? '#fff3cd' : 'white';
+                const label = index === 0 ? 'ELSŐ megálló' : '';
                 
                 html += `
-                    <div style="padding: 8px; background: #c8e6c9; border-radius: 4px; margin-top: 8px;">
-                        <strong>🏠 VISSZA:</strong> ${startPoint}
+                    <div style="padding: 8px; background: ${bgColor}; border-radius: 4px; margin-bottom: 6px; border-left: 3px solid #2196F3;">
+                        <div style="font-weight: 600; color: #1976D2;">
+                            ${emoji} ${stop.index}. ${label}
+                        </div>
+                        <div style="margin-top: 4px; color: #f57c00; font-weight: 600;">
+                            ⏰ Érkezés: ${stop.arrivalTime}
+                        </div>
+                        <div style="margin-top: 4px;">
+                            <strong>${stop.name}</strong>
+                        </div>
+                        <div style="color: #666; font-size: 12px;">
+                            📞 ${stop.phone}
+                        </div>
+                        <div style="color: #666; font-size: 12px;">
+                            📍 ${stop.address}
+                        </div>
+                        ${stop.items ? '<div style="color: #666; font-size: 11px; margin-top: 4px; padding-top: 4px; border-top: 1px dashed #ddd;">📦 ' + stop.items + '</div>' : ''}
+                        ${stop.note ? '<div style="color: #e65100; font-size: 11px; margin-top: 4px;">💬 ' + stop.note + '</div>' : ''}
                     </div>
                 `;
-                
-                contentDiv.innerHTML = html;
-                
-            } catch (error) {
-                console.error('Error updating route preview:', error);
-                contentDiv.innerHTML = '<div style="color: #d32f2f;">❌ Hiba az útvonal számításakor</div>';
-            }
+            });
+            
+            html += `
+                <div style="padding: 8px; background: #c8e6c9; border-radius: 4px; margin-top: 8px;">
+                    <strong>🏠 VISSZA:</strong> ${startPoint}
+                </div>
+            `;
+            
+            contentDiv.innerHTML = html;
+            
+            // Show summary
+            summaryDiv.style.display = 'block';
+            document.getElementById('total-distance').textContent = totalDistance;
+            document.getElementById('total-time').textContent = totalTime;
+            document.getElementById('estimated-finish').textContent = finishTime;
         }
         
         // Plan route with Google Maps
@@ -887,34 +1117,14 @@
             }
             
             if (optimizeEnabled) {
-                // Optimized route
-                // Geocode start point first
-                const startCoords = await geocodeAddress(startPoint);
-                if (!startCoords) {
-                    alert('Nem sikerült geokódolni a kezdőpontot: ' + startPoint);
+                const routeData = await getOptimizedRoute();
+                
+                if (!routeData) {
+                    alert('Nem sikerült kiszámolni az optimalizált útvonalat!');
                     return;
                 }
                 
-                // Calculate distances from start point
-                const withDistances = selected
-                    .filter(o => o.lat && o.lon)
-                    .map(o => ({
-                        ...o,
-                        distance: calculateDistance(startCoords.lat, startCoords.lon, o.lat, o.lon)
-                    }));
-                
-                if (withDistances.length === 0) {
-                    alert('Nincs geokódolt cím a kiválasztottak között!');
-                    return;
-                }
-                
-                // Sort by distance (descending - farthest first)
-                withDistances.sort((a, b) => b.distance - a.distance);
-                
-                // Build waypoints: farthest first (fixed), then rest in descending distance order
-                const waypoints = withDistances.map(o => encodeURIComponent(o.address));
-                
-                // Google Maps URL: Start -> Waypoints -> Back to Start
+                const waypoints = routeData.route.map(o => encodeURIComponent(o.address));
                 const url = `https://www.google.com/maps/dir/${encodeURIComponent(startPoint)}/${waypoints.join('/')}/${encodeURIComponent(startPoint)}/`;
                 
                 window.open(url, '_blank');
@@ -928,6 +1138,44 @@
             }
         });
         
+        // Export route to CSV
+        document.getElementById('export-route-btn').addEventListener('click', async () => {
+            const routeData = await getOptimizedRoute();
+            
+            if (!routeData) {
+                alert('Nem sikerült kiszámolni az útvonalat!');
+                return;
+            }
+            
+            // Build CSV
+            let csv = 'Sorszám,Érkezés,Név,Telefon,Cím,Tételek,Megjegyzés\n';
+            
+            routeData.route.forEach(stop => {
+                csv += `${stop.index},"${stop.arrivalTime}","${stop.name}","${stop.phone}","${stop.address}","${stop.items || ''}","${stop.note || ''}"\n`;
+            });
+            
+            // Add summary
+            csv += '\n';
+            csv += `Összesen,,,,,${routeData.totalDistance} km,${routeData.totalTime} perc\n`;
+            csv += `Befejezés,${routeData.finishTime},,,,\n`;
+            
+            // Download
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `utvonal_${new Date().toISOString().slice(0,10)}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+        
+        // Print route
+        document.getElementById('print-route-btn').addEventListener('click', () => {
+            window.print();
+        });
+        
         // Select all
         document.getElementById('select-all-btn').addEventListener('click', () => {
             const filteredOrders = getFilteredOrders();
@@ -935,6 +1183,7 @@
             renderOrders();
             updateMap();
             updateStats();
+            updateFirstStopSelector();
         });
         
         // Deselect all
@@ -943,6 +1192,7 @@
             renderOrders();
             updateMap();
             updateStats();
+            updateFirstStopSelector();
         });
         
         // Status filter change
@@ -956,6 +1206,17 @@
         
         // Optimization checkbox change
         document.getElementById('optimize-route').addEventListener('change', () => {
+            updateStats();
+            updateFirstStopSelector();
+        });
+        
+        // First stop selector change
+        document.getElementById('first-stop-select').addEventListener('change', () => {
+            updateRoutePreview();
+        });
+        
+        // Start time input change
+        document.getElementById('start-time-input').addEventListener('change', () => {
             updateRoutePreview();
         });
         
