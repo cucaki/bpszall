@@ -83,7 +83,8 @@
             margin-bottom: 8px;
         }
         
-        .input-group input {
+        .input-group input,
+        .input-group select {
             width: 100%;
             padding: 10px;
             border: 1px solid #ccc;
@@ -161,6 +162,7 @@
             display: flex;
             gap: 10px;
             margin-bottom: 20px;
+            flex-wrap: wrap;
         }
         
         .btn {
@@ -241,32 +243,64 @@
             background: #4CAF50;
         }
         
-        .route-content {
+        .route-item {
             background: #f9f9f9;
             padding: 15px;
             border-radius: 6px;
-            font-family: monospace;
-            font-size: 13px;
-            white-space: pre-wrap;
-            max-height: 500px;
-            overflow-y: auto;
+            margin-bottom: 12px;
+            border-left: 4px solid #2196F3;
         }
         
-        .google-link {
-            margin-top: 15px;
-            padding: 12px;
-            background: #e3f2fd;
-            border-radius: 6px;
+        .route-item.first {
+            background: #fff3cd;
+            border-left-color: #FF9800;
         }
         
-        .google-link a {
+        .route-item.start {
+            background: #e8f5e9;
+            border-left-color: #4CAF50;
+        }
+        
+        .route-number {
+            font-size: 20px;
+            font-weight: 700;
             color: #1976D2;
-            font-weight: 600;
-            text-decoration: none;
+            margin-bottom: 8px;
         }
         
-        .google-link a:hover {
-            text-decoration: underline;
+        .route-name {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        
+        .route-contact {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 4px;
+        }
+        
+        .route-address {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        
+        .maps-link {
+            display: inline-block;
+            padding: 8px 16px;
+            background: #4285F4;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        
+        .maps-link:hover {
+            background: #1976D2;
+            transform: translateY(-1px);
         }
         
         .progress {
@@ -306,6 +340,21 @@
         .stat-item strong {
             color: #2196F3;
         }
+
+        .first-stop-selector {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            border: 2px solid #FF9800;
+        }
+
+        .first-stop-selector label {
+            font-weight: 600;
+            color: #856404;
+            margin-bottom: 8px;
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -324,7 +373,7 @@
         
         <div class="settings">
             <div class="input-group">
-                <label>📍 Kezdőpont (honnan indulsz):</label>
+                <label>📍 Kezdőpont (honnan indulsz és hova térsz vissza):</label>
                 <input type="text" id="start-point" placeholder="pl. Gyomaendrőd, 5500" value="Gyomaendrőd, 5500">
             </div>
             
@@ -375,10 +424,15 @@
                 <h2>📋 Szállítási Lista</h2>
                 <button class="copy-btn" id="copy-btn">📋 Másolás</button>
             </div>
+
+            <div class="first-stop-selector" id="first-stop-selector">
+                <label>🎯 Válaszd ki az ELSŐ megállót:</label>
+                <select id="first-stop-select">
+                    <option value="">Legtávolabbi (automatikus)</option>
+                </select>
+            </div>
             
-            <div class="route-content" id="route-content"></div>
-            
-            <div class="google-link" id="google-link"></div>
+            <div id="route-content"></div>
         </div>
         
         <div class="progress" id="progress" style="display: none;"></div>
@@ -389,6 +443,7 @@
     <script>
         let orders = [];
         let selectedOrders = new Set();
+        let currentRoute = null;
         
         // Geocode address
         async function geocodeAddress(address) {
@@ -536,6 +591,123 @@
             document.getElementById('generate-btn').disabled = selectedOrders.size === 0;
         }
         
+        // Build first stop selector
+        function buildFirstStopSelector(selected) {
+            const selector = document.getElementById('first-stop-select');
+            selector.innerHTML = '<option value="">Legtávolabbi (automatikus)</option>';
+            
+            selected.forEach(order => {
+                const option = document.createElement('option');
+                option.value = order.orderNumber;
+                option.textContent = `${order.name} - ${order.address}`;
+                selector.appendChild(option);
+            });
+        }
+        
+        // Calculate and display route
+        async function calculateRoute() {
+            const startPoint = document.getElementById('start-point').value.trim();
+            const selected = orders.filter(o => selectedOrders.has(o.orderNumber));
+            const firstStopOrderNum = document.getElementById('first-stop-select').value;
+            
+            // Geocode start
+            const startCoords = await geocodeAddress(startPoint);
+            if (!startCoords) {
+                alert('Nem sikerült geokódolni a kezdőpontot!');
+                return;
+            }
+            
+            // Calculate distances
+            const withDistances = selected
+                .filter(o => o.lat && o.lon)
+                .map(o => ({
+                    ...o,
+                    distance: calculateDistance(startCoords.lat, startCoords.lon, o.lat, o.lon)
+                }));
+            
+            let orderedStops;
+            
+            if (firstStopOrderNum) {
+                // Manual first stop
+                const firstStop = withDistances.find(o => o.orderNumber === firstStopOrderNum);
+                const others = withDistances.filter(o => o.orderNumber !== firstStopOrderNum);
+                
+                if (firstStop) {
+                    others.forEach(o => {
+                        o.distanceFromFirst = calculateDistance(firstStop.lat, firstStop.lon, o.lat, o.lon);
+                    });
+                    others.sort((a, b) => b.distanceFromFirst - a.distanceFromFirst);
+                    
+                    orderedStops = [firstStop, ...others];
+                }
+            } else {
+                // Automatic: farthest first
+                withDistances.sort((a, b) => b.distance - a.distance);
+                orderedStops = withDistances;
+            }
+            
+            currentRoute = {
+                startPoint,
+                stops: orderedStops
+            };
+            
+            displayRoute();
+        }
+        
+        // Display route
+        function displayRoute() {
+            const { startPoint, stops } = currentRoute;
+            const contentDiv = document.getElementById('route-content');
+            
+            let html = '';
+            
+            // Start point
+            html += `
+                <div class="route-item start">
+                    <div class="route-number">🏁 START</div>
+                    <div class="route-name">${startPoint}</div>
+                    <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(startPoint)}" 
+                       target="_blank" 
+                       class="maps-link">
+                        📍 Megnyitás Google Maps-ben
+                    </a>
+                </div>
+            `;
+            
+            // Stops
+            stops.forEach((stop, index) => {
+                const isFirst = index === 0;
+                html += `
+                    <div class="route-item ${isFirst ? 'first' : ''}">
+                        <div class="route-number">${isFirst ? '🎯 ' : ''}${index + 1}. ${isFirst ? 'ELSŐ MEGÁLLÓ' : ''}</div>
+                        <div class="route-name">${stop.name}</div>
+                        <div class="route-contact">📞 ${stop.phone}</div>
+                        <div class="route-address">📍 ${stop.address}</div>
+                        <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stop.address)}" 
+                           target="_blank" 
+                           class="maps-link">
+                            📍 Megnyitás Google Maps-ben
+                        </a>
+                    </div>
+                `;
+            });
+            
+            // Return
+            html += `
+                <div class="route-item start">
+                    <div class="route-number">🏠 VISSZA</div>
+                    <div class="route-name">${startPoint}</div>
+                    <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(startPoint)}" 
+                       target="_blank" 
+                       class="maps-link">
+                        📍 Megnyitás Google Maps-ben
+                    </a>
+                </div>
+            `;
+            
+            contentDiv.innerHTML = html;
+        }
+        
         // File upload
         document.getElementById('file-upload').addEventListener('change', async function(e) {
             const file = e.target.files[0];
@@ -605,53 +777,43 @@
             document.getElementById('progress').style.display = 'block';
             document.getElementById('progress').innerHTML = '<div>Útvonal optimalizálása...</div>';
             
-            // Geocode start
-            const startCoords = await geocodeAddress(startPoint);
-            if (!startCoords) {
-                alert('Nem sikerült geokódolni a kezdőpontot!');
-                document.getElementById('progress').style.display = 'none';
-                return;
-            }
+            buildFirstStopSelector(selected);
             
-            // Calculate distances and sort
-            const withDistances = selected
-                .filter(o => o.lat && o.lon)
-                .map(o => ({
-                    ...o,
-                    distance: calculateDistance(startCoords.lat, startCoords.lon, o.lat, o.lon)
-                }));
-            
-            withDistances.sort((a, b) => b.distance - a.distance);
-            
-            // Build text
-            let text = `🏁 START: ${startPoint}\n\n`;
-            
-            withDistances.forEach((stop, index) => {
-                text += `${index + 1}. ${stop.name}\n`;
-                text += `   📞 ${stop.phone}\n`;
-                text += `   📍 ${stop.address}\n\n`;
-            });
-            
-            text += `🏠 VISSZA: ${startPoint}`;
-            
-            // Build Google Maps URL
-            const waypoints = withDistances.map(o => encodeURIComponent(o.address));
-            const googleUrl = `https://www.google.com/maps/dir/${encodeURIComponent(startPoint)}/${waypoints.join('/')}/${encodeURIComponent(startPoint)}/`;
-            
-            // Display
-            document.getElementById('route-content').textContent = text;
-            document.getElementById('google-link').innerHTML = `
-                <strong>🗺️ Google Maps útvonal:</strong><br>
-                <a href="${googleUrl}" target="_blank">Megnyitás Google Maps-ben →</a>
-            `;
+            await calculateRoute();
             
             document.getElementById('progress').style.display = 'none';
             document.getElementById('route-result').classList.add('show');
         });
         
+        // First stop selector change
+        document.getElementById('first-stop-select').addEventListener('change', async () => {
+            if (currentRoute) {
+                document.getElementById('progress').style.display = 'block';
+                document.getElementById('progress').innerHTML = '<div>Útvonal újraszámítása...</div>';
+                
+                await calculateRoute();
+                
+                document.getElementById('progress').style.display = 'none';
+            }
+        });
+        
         // Copy button
         document.getElementById('copy-btn').addEventListener('click', () => {
-            const text = document.getElementById('route-content').textContent;
+            const { startPoint, stops } = currentRoute;
+            
+            let text = `🏁 START: ${startPoint}\n`;
+            text += `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(startPoint)}\n\n`;
+            
+            stops.forEach((stop, index) => {
+                text += `${index + 1}. ${stop.name}\n`;
+                text += `📞 ${stop.phone}\n`;
+                text += `📍 ${stop.address}\n`;
+                text += `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stop.address)}\n\n`;
+            });
+            
+            text += `🏠 VISSZA: ${startPoint}\n`;
+            text += `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(startPoint)}`;
+            
             navigator.clipboard.writeText(text).then(() => {
                 const btn = document.getElementById('copy-btn');
                 btn.textContent = '✓ Másolva!';
