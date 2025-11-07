@@ -343,6 +343,16 @@
             color: #1976d2;
         }
 
+        .warning-box {
+            background: #fff3cd;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
         .loading-overlay {
             position: absolute;
             top: 0;
@@ -402,6 +412,10 @@
                     </div>
                 </div>
 
+                <div class="warning-box">
+                    ⚠️ <strong>Fontos:</strong> Csak a bejelölt státuszú rendelések lesznek geokódolva! A "Teljesítve" alapból ki van kapcsolva.
+                </div>
+
                 <div class="info-box">
                     💡 <strong>Használat:</strong> Kattints a címekre a kívánt sorrendben (1, 2, 3...). Újra kattintva törlöd.
                 </div>
@@ -410,6 +424,10 @@
                     <div class="stats-row">
                         <span class="stats-label">Összes rendelés:</span>
                         <span id="total-orders">0</span>
+                    </div>
+                    <div class="stats-row">
+                        <span class="stats-label">Geokódolt:</span>
+                        <span id="geocoded-count">0</span>
                     </div>
                     <div class="stats-row">
                         <span class="stats-label">Sorrendbe rakva:</span>
@@ -535,6 +553,12 @@
             return colorMap[status] || 'gray';
         }
         
+        // Get currently selected statuses
+        function getSelectedStatuses() {
+            return Array.from(document.querySelectorAll('.checkbox-group input[type="checkbox"]:checked'))
+                .map(cb => cb.value);
+        }
+        
         // Find column dynamically
         function findColumn(columns, keywords) {
             return columns.find(col => {
@@ -620,32 +644,48 @@
                     
                     document.getElementById('order-list').innerHTML = '<div class="no-data">Rendelések feldolgozása...</div>';
                     
+                    // Process all orders first
                     orders = processRawWooCommerce(rawData);
+                    
+                    // Get selected statuses to filter which orders to geocode
+                    const selectedStatuses = getSelectedStatuses();
+                    const ordersToGeocode = orders.filter(order => selectedStatuses.includes(order.status));
+                    
+                    console.log(`Összes rendelés: ${orders.length}, Geokódolandó: ${ordersToGeocode.length}`);
+                    
+                    if (ordersToGeocode.length === 0) {
+                        document.getElementById('order-list').innerHTML = '<div class="no-data">Nincs geokódolható rendelés a kiválasztott státuszok alapján.</div>';
+                        updateStats();
+                        return;
+                    }
                     
                     const progressDiv = document.createElement('div');
                     progressDiv.className = 'no-data';
                     progressDiv.innerHTML = `
                         <div>Címek geokódolása...</div>
+                        <div style="margin: 10px 0; font-size: 12px; color: #666;">Csak a bejelölt státuszok: ${ordersToGeocode.length} db</div>
                         <div class="progress-bar">
                             <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
                         </div>
-                        <div><span id="geocode-progress">0</span>/${orders.length}</div>
+                        <div><span id="geocode-progress">0</span>/${ordersToGeocode.length}</div>
                     `;
                     document.getElementById('order-list').innerHTML = '';
                     document.getElementById('order-list').appendChild(progressDiv);
                     
-                    for (let i = 0; i < orders.length; i++) {
-                        const order = orders[i];
+                    // Geocode only the filtered orders
+                    for (let i = 0; i < ordersToGeocode.length; i++) {
+                        const order = ordersToGeocode[i];
                         const coords = await geocodeAddress(order.address);
                         if (coords) {
                             order.lat = coords.lat;
                             order.lon = coords.lon;
                         }
                         
-                        const progress = ((i + 1) / orders.length * 100).toFixed(0);
+                        const progress = ((i + 1) / ordersToGeocode.length * 100).toFixed(0);
                         document.getElementById('progress-fill').style.width = progress + '%';
                         document.getElementById('geocode-progress').textContent = i + 1;
                         
+                        // Wait 1.1 seconds between requests to respect rate limit
                         await new Promise(resolve => setTimeout(resolve, 1100));
                     }
                     
@@ -664,9 +704,7 @@
         
         // Filter orders based on status checkboxes
         function getFilteredOrders() {
-            const checkedStatuses = Array.from(document.querySelectorAll('.checkbox-group input[type="checkbox"]:checked'))
-                .map(cb => cb.value);
-            
+            const checkedStatuses = getSelectedStatuses();
             return orders.filter(order => checkedStatuses.includes(order.status));
         }
         
@@ -820,7 +858,10 @@
         // Update stats
         function updateStats() {
             const filteredOrders = getFilteredOrders();
+            const geocodedOrders = filteredOrders.filter(o => o.lat && o.lon).length;
+            
             document.getElementById('total-orders').textContent = filteredOrders.length;
+            document.getElementById('geocoded-count').textContent = geocodedOrders;
             document.getElementById('ordered-count').textContent = orderedStops.length;
             
             document.getElementById('calculate-route-btn').disabled = orderedStops.length < 2;
