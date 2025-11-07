@@ -571,6 +571,8 @@
         function processRawWooCommerce(rawData) {
             const columns = Object.keys(rawData[0]);
             
+            console.log('Elérhető oszlopok:', columns);
+            
             const orderNumberCol = findColumn(columns, ['order', 'number']);
             const orderStatusCol = findColumn(columns, ['status']);
             const shippingFNameCol = findColumn(columns, ['first', 'shipping']);
@@ -582,6 +584,17 @@
             let phoneCol = findColumn(columns, ['phone', 'shipping']);
             if (!phoneCol) phoneCol = findColumn(columns, ['phone', 'billing']);
             
+            console.log('Talált oszlopok:', {
+                orderNumber: orderNumberCol,
+                status: orderStatusCol,
+                firstName: shippingFNameCol,
+                lastName: shippingLNameCol,
+                address: shippingAddrCol,
+                city: shippingCityCol,
+                postcode: shippingPostcodeCol,
+                phone: phoneCol
+            });
+            
             const grouped = {};
             
             rawData.forEach(row => {
@@ -589,12 +602,21 @@
                 if (!orderNum) return;
                 
                 if (!grouped[orderNum]) {
+                    // Build address parts, filtering out undefined/empty values
+                    const addressParts = [];
+                    
+                    if (row[shippingAddrCol]) addressParts.push(row[shippingAddrCol]);
+                    if (row[shippingCityCol]) addressParts.push(row[shippingCityCol]);
+                    if (row[shippingPostcodeCol]) addressParts.push(row[shippingPostcodeCol]);
+                    
+                    const fullAddress = addressParts.join(', ');
+                    
                     grouped[orderNum] = {
                         orderNumber: orderNum,
                         status: row[orderStatusCol],
                         name: `${row[shippingLNameCol] || ''} ${row[shippingFNameCol] || ''}`.trim(),
                         phone: phoneCol ? row[phoneCol] : '',
-                        address: `${row[shippingAddrCol]}, ${row[shippingCityCol]}, ${row[shippingPostcodeCol]}`.replace(/^,\s*/, '').replace(/,\s*$/, '')
+                        address: fullAddress
                     };
                 }
             });
