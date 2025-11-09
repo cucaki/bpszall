@@ -213,6 +213,25 @@
             border-color: #2196F3;
             background: #e3f2fd;
         }
+
+        /* --- ÚJ STÍLUSOK A HIBÁS GEOKÓDOLÁSHOZ --- */
+        .order-item.geocoding-failed {
+            background-color: #fff0f0; /* Halvány piros háttér */
+            border-color: #e0b0b0;   /* Sötétebb piros keret */
+        }
+        
+        .geocoding-error-message {
+            font-size: 12px;
+            color: #c0392b; /* Erős piros szövegszín */
+            font-weight: 600;
+            margin-top: 8px;
+            padding: 5px 8px;
+            background: #fde2e2;
+            border: 1px solid #e7c3c3;
+            border-radius: 4px;
+            text-align: center;
+        }
+        /* --- ÚJ STÍLUSOK VÉGE --- */
         
         .order-number-badge {
             position: absolute;
@@ -602,12 +621,11 @@
                 if (!orderNum) return;
                 
                 if (!grouped[orderNum]) {
-                    // Build address parts, filtering out undefined/empty values
                     const addressParts = [];
                     
-                    if (row[shippingAddrCol]) addressParts.push(row[shippingAddrCol]);
+                    if (row[shippingAddrCol]) addressParts.push(String(row[shippingAddrCol]).trim());
                     
-                    // --- JAVÍTÁS ITT KEZDŐDIK ---
+                    // --- JAVÍTVA: Budapest városnév tisztítása ---
                     if (row[shippingCityCol]) {
                         let city = String(row[shippingCityCol]).trim();
                         // Ha a város Budapest, tisztítsuk meg a kerület jelöléstől,
@@ -617,7 +635,7 @@
                         }
                         addressParts.push(city);
                     }
-                    // --- JAVÍTÁS ITT ÉR VÉGET ---
+                    // --- JAVÍTÁS VÉGE ---
                     
                     if (row[shippingPostcodeCol]) addressParts.push(row[shippingPostcodeCol]);
                     
@@ -678,10 +696,8 @@
                     
                     document.getElementById('order-list').innerHTML = '<div class="no-data">Rendelések feldolgozása...</div>';
                     
-                    // Process all orders first
                     orders = processRawWooCommerce(rawData);
                     
-                    // Get selected statuses to filter which orders to geocode
                     const selectedStatuses = getSelectedStatuses();
                     const ordersToGeocode = orders.filter(order => selectedStatuses.includes(order.status));
                     
@@ -706,7 +722,6 @@
                     document.getElementById('order-list').innerHTML = '';
                     document.getElementById('order-list').appendChild(progressDiv);
                     
-                    // Geocode only the filtered orders
                     for (let i = 0; i < ordersToGeocode.length; i++) {
                         const order = ordersToGeocode[i];
                         const coords = await geocodeAddress(order.address);
@@ -719,7 +734,6 @@
                         document.getElementById('progress-fill').style.width = progress + '%';
                         document.getElementById('geocode-progress').textContent = i + 1;
                         
-                        // Wait 1.1 seconds between requests to respect rate limit
                         await new Promise(resolve => setTimeout(resolve, 1100));
                     }
                     
@@ -750,17 +764,21 @@
         
         // Toggle order in sequence
         function toggleOrderSequence(orderNumber) {
+            const order = orders.find(o => o.orderNumber === orderNumber);
+
+            // Csak akkor engedélyezzük a sorba rendezést, ha a geokódolás sikeres volt
+            if (!order || !order.lat || !order.lon) {
+                console.warn("Cannot add order to sequence: geocoding failed or missing coordinates.");
+                return;
+            }
+
             const index = orderedStops.indexOf(orderNumber);
             
             if (index !== -1) {
-                // Remove from sequence
                 orderedStops.splice(index, 1);
-                // Clear route times when order changes
                 routeTimes = {};
             } else {
-                // Add to sequence
                 orderedStops.push(orderNumber);
-                // Clear route times when order changes
                 routeTimes = {};
             }
             
@@ -781,7 +799,6 @@
             
             orderList.innerHTML = '';
             
-            // Sort by position if they have one
             const sortedOrders = [...filteredOrders].sort((a, b) => {
                 const posA = getOrderPosition(a.orderNumber);
                 const posB = getOrderPosition(b.orderNumber);
@@ -801,6 +818,12 @@
                     orderDiv.classList.add('has-order');
                 }
                 
+                // --- JAVÍTVA: Hiba jelzése, ha a geokódolás sikertelen ---
+                const hasCoordinates = order.lat && order.lon;
+                if (!hasCoordinates) {
+                    orderDiv.classList.add('geocoding-failed');
+                }
+                
                 const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.address)}`;
                 const travelTime = routeTimes[order.orderNumber];
                 
@@ -810,12 +833,14 @@
                     <div class="order-name">${order.name}</div>
                     <div class="order-phone">📞 ${order.phone}</div>
                     <div class="order-address">📍 ${order.address}</div>
+                    
+                    ${!hasCoordinates ? '<div class="geocoding-error-message">⚠️ A cím nem található a térképen!</div>' : ''}
+                    
                     ${travelTime ? `<div class="order-time">⏱️ Előző címtől: ~${travelTime} perc</div>` : ''}
                     ${position ? `<a href="${googleMapsUrl}" target="_blank" class="order-maps-link">📍 Google Maps</a>` : ''}
                 `;
                 
                 orderDiv.addEventListener('click', (e) => {
-                    // Don't toggle if clicking on the Google Maps link
                     if (e.target.tagName !== 'A') {
                         toggleOrderSequence(order.orderNumber);
                     }
@@ -832,7 +857,6 @@
                 return;
             }
             
-            // Clear existing markers and polyline
             markers.forEach(marker => map.removeLayer(marker));
             markers = [];
             
@@ -852,10 +876,8 @@
                     
                     let markerHtml;
                     if (position) {
-                        // Numbered marker
                         markerHtml = `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 6px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 16px;">${position}</div>`;
                     } else {
-                        // Regular marker
                         markerHtml = `<div style="background-color: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.5);"></div>`;
                     }
                     
@@ -913,7 +935,6 @@
                 return;
             }
             
-            // Show loading overlay
             const orderList = document.getElementById('order-list');
             const loadingDiv = document.createElement('div');
             loadingDiv.className = 'loading-overlay';
@@ -921,10 +942,8 @@
             orderList.style.position = 'relative';
             orderList.appendChild(loadingDiv);
             
-            // Clear previous route times
             routeTimes = {};
             
-            // Calculate route times and get geometry
             const allCoords = [];
             
             for (let i = 0; i < orderedOrders.length; i++) {
@@ -939,9 +958,8 @@
                     if (routeData) {
                         routeTimes[order.orderNumber] = Math.round(routeData.duration);
                         
-                        // Add geometry coords
                         routeData.geometry.forEach(coord => {
-                            allCoords.push([coord[1], coord[0]]); // Leaflet uses [lat, lon]
+                            allCoords.push([coord[1], coord[0]]);
                         });
                     }
                     
@@ -949,7 +967,6 @@
                 }
             }
             
-            // Draw route on map
             if (routePolyline) {
                 map.removeLayer(routePolyline);
             }
@@ -964,7 +981,6 @@
                 map.fitBounds(routePolyline.getBounds().pad(0.1));
             }
             
-            // Remove loading overlay and re-render orders with times
             loadingDiv.remove();
             renderOrders();
         });
