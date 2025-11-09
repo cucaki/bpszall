@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bug Palace - Szállítási Lista</title>
+    <title>Bug Palace - Szállítási Lista v2</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
@@ -44,6 +44,7 @@
         .order-item:hover { border-color: #4CAF50; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .order-item.has-order { border-color: #2196F3; background: #e3f2fd; }
         .order-item.geocoding-failed { background-color: #fff0f0; border-color: #e0b0b0; }
+        .order-item.edit-mode { background: #fffef0; cursor: default; }
         .geocoding-error-message { font-size: 12px; color: #c0392b; font-weight: 600; margin-top: 8px; padding: 5px 8px; background: #fde2e2; border: 1px solid #e7c3c3; border-radius: 4px; text-align: center; }
         .order-number-badge { position: absolute; top: 8px; right: 8px; background: #2196F3; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
         .order-status { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
@@ -53,8 +54,6 @@
         .status-fizetes-elott { background: #FFC7CE; color: #721c24; }
         .order-name { font-weight: 600; margin-bottom: 4px; }
         .order-phone { font-size: 13px; color: #666; margin-bottom: 4px; }
-        
-        /* ÚJ: Címszegmentálás stílusok */
         .address-segments { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
         .address-field { display: flex; flex-direction: column; }
         .address-field.full-width { grid-column: 1 / -1; }
@@ -62,15 +61,11 @@
         .address-input { padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; font-family: inherit; }
         .address-input:focus { outline: none; border-color: #2196F3; background: #f9f9f9; }
         .address-display { font-size: 13px; color: #666; padding: 6px; background: #f9f9f9; border-radius: 4px; margin-top: 4px; }
-        
         .order-actions { margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap; }
         .btn-regeocode { padding: 6px 12px; font-size: 12px; background: #f0f0f0; color: #333; border: 1px solid #ccc; }
         .btn-regeocode:hover { background: #e0e0e0; }
         .btn-toggle-edit { padding: 6px 12px; font-size: 12px; background: #2196F3; color: white; border: none; }
         .btn-toggle-edit:hover { background: #1976D2; }
-        .order-time { font-size: 13px; color: #FF9800; font-weight: 600; background: #FFF3E0; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 6px; }
-        .order-maps-link { display: inline-block; padding: 6px 12px; background: #4285F4; color: white; text-decoration: none; border-radius: 4px; font-size: 12px; font-weight: 600; transition: all 0.2s; }
-        .order-maps-link:hover { background: #1976D2; }
         .map-container { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden; position: relative; }
         #map { height: calc(100vh - 200px); min-height: 500px; width: 100%; z-index: 1; }
         .no-data { text-align: center; padding: 40px; color: #999; }
@@ -78,18 +73,16 @@
         .progress-fill { height: 100%; background: #4CAF50; transition: width 0.3s; }
         .info-box { background: #e3f2fd; padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; color: #1976d2; }
         .warning-box { background: #fff3cd; padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; color: #856404; border: 1px solid #ffeaa7; }
-        .loading-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255, 255, 255, 0.9); display: flex; align-items: center; justify-content: center; z-index: 1000; font-size: 14px; color: #666; }
-        .edit-mode { background: #fffef0; }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🐛 Bug Palace - Szállítási Lista (v2.0)</h1>
-            <p>Töltsd fel a WooCommerce export fájlt, szerkeszd a címeket szegmentáltan!</p>
+            <h1>🐛 Bug Palace - Szállítási Lista</h1>
+            <p>Töltsd fel a WooCommerce export fájlt, szerkeszd a címeket!</p>
             <div style="margin-top: 15px;">
                 <div class="file-input-wrapper">
-                    <label class="file-input-label" for="file-upload">📁 WooCommerce Excel kiválasztása</label>
+                    <label class="file-input-label" for="file-upload">📁 Excel kiválasztása</label>
                     <input type="file" id="file-upload" accept=".xlsx, .xls">
                 </div>
                 <span class="file-name" id="file-name">Nincs fájl kiválasztva</span>
@@ -108,8 +101,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="warning-box">⚠️ <strong>Fontos:</strong> Csak a bejelölt státuszú rendelések lesznek geokódolva!</div>
-                <div class="info-box">💡 <strong>Új funkció:</strong> Kattints a "Cím szerkesztése" gombra, majd töltsd ki a mezőket pontosan. Az "Újrakódolás" gomb frissíti a térképet.</div>
+                <div class="info-box">💡 Kattints a "Szerkesztés" gombra, javítsd a címet, majd "Újrakódolás"</div>
                 <div class="stats" id="stats">
                     <div class="stats-row"><span class="stats-label">Összes rendelés:</span><span id="total-orders">0</span></div>
                     <div class="stats-row"><span class="stats-label">Geokódolt:</span><span id="geocoded-count">0</span></div>
@@ -118,10 +110,9 @@
                 <div class="action-buttons">
                     <button class="btn btn-success" id="calculate-route-btn" disabled>🗺️ Útvonal optimalizálása</button>
                     <button class="btn btn-primary" id="copy-list-btn" disabled>📋 Lista másolása</button>
-                    <button class="btn btn-primary" id="export-csv-btn" disabled>💾 CSV exportálás</button>
                 </div>
-                <div class="order-list" id="order-list" style="position: relative;">
-                    <div class="no-data">Tölts fel egy WooCommerce export fájlt a kezdéshez</div>
+                <div class="order-list" id="order-list">
+                    <div class="no-data">Tölts fel egy WooCommerce export fájlt</div>
                 </div>
             </div>
             <div class="map-container">
@@ -134,25 +125,25 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     
     <script>
-        let map, markers = [], routePolyline = null, orders = [], orderedStops = [], routeTimes = {};
-        let editingOrder = null; // ÚJ: Melyik rendelést szerkesztjük
+        let map, markers = [], routePolyline = null, orders = [], orderedStops = [];
+        let editingOrder = null;
         
         function initMap() {
             map = L.map('map').setView([47.1625, 19.5033], 7);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
-                attribution: '© OpenStreetMap contributors', 
+                attribution: '© OpenStreetMap', 
                 maxZoom: 19 
             }).addTo(map);
         }
         
         function getStatusClass(status) {
-            const statusMap = { 
+            const map = { 
                 'Teljesítve': 'status-teljesitve', 
                 'Feldolgozás alatt': 'status-feldolgozas', 
                 'Fizetés folyamatban': 'status-fizetes-folyamatban', 
                 'Fizetés előtt': 'status-fizetes-elott' 
             };
-            return statusMap[status] || 'status-feldolgozas';
+            return map[status] || 'status-feldolgozas';
         }
         
         function getSelectedStatuses() {
@@ -163,22 +154,16 @@
             return columns.find(col => keywords.every(kw => col.toLowerCase().includes(kw.toLowerCase())));
         }
         
-        // ÚJ: Cím szétbontása komponensekre
         function parseAddress(fullAddress) {
             const parts = fullAddress.split(',').map(s => s.trim());
             const result = { street: '', city: '', postcode: '' };
             
             parts.forEach(part => {
-                // Irányítószám detektálás (4 számjegy)
                 if (/^\d{4}$/.test(part)) {
                     result.postcode = part;
-                }
-                // Budapest vagy más város
-                else if (part.toLowerCase().includes('budapest') || /^[A-ZÁÉÍÓÖŐÚÜŰ][a-záéíóöőúüű]+$/.test(part)) {
+                } else if (part.toLowerCase().includes('budapest') || /^[A-ZÁÉÍÓÖŐÚÜŰ][a-záéíóöőúüű]+$/.test(part)) {
                     result.city = part;
-                }
-                // Utca + házszám
-                else if (part.length > 0) {
+                } else if (part.length > 0) {
                     result.street = part;
                 }
             });
@@ -186,7 +171,6 @@
             return result;
         }
         
-        // ÚJ: Címkomponensek összerakása
         function buildFullAddress(segments) {
             const parts = [];
             if (segments.street) parts.push(segments.street);
@@ -230,7 +214,7 @@
                     name: `${row[colMap.lName] || ''} ${row[colMap.fName] || ''}`.trim(),
                     phone: colMap.phone ? row[colMap.phone] : '', 
                     address: fullAddress,
-                    addressSegments: parseAddress(fullAddress) // ÚJ: Szegmentált cím mentése
+                    addressSegments: parseAddress(fullAddress)
                 };
             });
             
@@ -262,14 +246,14 @@
                     const workbook = XLSX.read(data, {type: 'array'});
                     const rawData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
                     
-                    document.getElementById('order-list').innerHTML = '<div class="no-data">Rendelések feldolgozása...</div>';
+                    document.getElementById('order-list').innerHTML = '<div class="no-data">Feldolgozás...</div>';
                     orders = processRawWooCommerce(rawData);
                     
                     const ordersToGeocode = orders.filter(order => getSelectedStatuses().includes(order.status));
                     
                     const progressDiv = document.createElement('div');
                     progressDiv.className = 'no-data';
-                    progressDiv.innerHTML = `<div>Címek geokódolása...</div><div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div><div><span id="geocode-progress">0</span>/${ordersToGeocode.length}</div>`;
+                    progressDiv.innerHTML = `<div>Geokódolás...</div><div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div><div><span id="geocode-progress">0</span>/${ordersToGeocode.length}</div>`;
                     document.getElementById('order-list').innerHTML = '';
                     document.getElementById('order-list').appendChild(progressDiv);
                     
@@ -291,8 +275,8 @@
                     updateMap(); 
                     updateStats();
                 } catch (error) {
-                    console.error('Error processing file:', error);
-                    document.getElementById('order-list').innerHTML = '<div class="no-data" style="color: red;">Hiba a fájl feldolgozása során!</div>';
+                    console.error('Error:', error);
+                    document.getElementById('order-list').innerHTML = '<div class="no-data" style="color: red;">Hiba!</div>';
                 }
             };
             reader.readAsArrayBuffer(file);
@@ -323,18 +307,15 @@
             updateStats();
         }
 
-        // ÚJ: Cím szerkesztési mód kapcsolása
         function toggleEditMode(orderNumber) {
             editingOrder = editingOrder === orderNumber ? null : orderNumber;
             renderOrders();
         }
 
-        // ÚJ: Szerkesztés után mentés
         function saveAddressEdit(orderNumber) {
             const order = orders.find(o => o.orderNumber === orderNumber);
             if (!order) return;
             
-            // Összes input mező értékének kiolvasása
             const street = document.getElementById(`street-${orderNumber}`).value.trim();
             const city = document.getElementById(`city-${orderNumber}`).value.trim();
             const postcode = document.getElementById(`postcode-${orderNumber}`).value.trim();
@@ -350,11 +331,10 @@
             const order = orders.find(o => o.orderNumber === orderNumber);
             if (!order) return;
 
-            const originalButtonText = buttonElement.textContent;
+            const originalText = buttonElement.textContent;
             buttonElement.textContent = 'Kódolás...';
             buttonElement.disabled = true;
 
-            // Ha szerkesztési módban van, mentjük az adatokat
             if (editingOrder === orderNumber) {
                 saveAddressEdit(orderNumber);
             }
@@ -366,11 +346,11 @@
             } else {
                 delete order.lat;
                 delete order.lon;
-                const indexInStops = orderedStops.indexOf(orderNumber);
-                if (indexInStops > -1) orderedStops.splice(indexInStops, 1);
+                const idx = orderedStops.indexOf(orderNumber);
+                if (idx > -1) orderedStops.splice(idx, 1);
             }
 
-            buttonElement.textContent = originalButtonText;
+            buttonElement.textContent = originalText;
             buttonElement.disabled = false;
             renderOrders(); 
             updateMap(); 
@@ -382,14 +362,15 @@
             const filteredOrders = getFilteredOrders();
             
             if (filteredOrders.length === 0) {
-                orderList.innerHTML = '<div class="no-data">Nincs megjeleníthető rendelés</div>'; 
+                orderList.innerHTML = '<div class="no-data">Nincs rendelés</div>'; 
                 return;
             }
             
             orderList.innerHTML = '';
             
             const sortedOrders = [...filteredOrders].sort((a, b) => {
-                const posA = getOrderPosition(a.orderNumber), posB = getOrderPosition(b.orderNumber);
+                const posA = getOrderPosition(a.orderNumber);
+                const posB = getOrderPosition(b.orderNumber);
                 if (posA && posB) return posA - posB;
                 if (posA) return -1; 
                 if (posB) return 1; 
@@ -402,13 +383,12 @@
                 const position = getOrderPosition(order.orderNumber);
                 if (position) orderDiv.classList.add('has-order');
                 
-                const hasCoordinates = order.lat && order.lon;
-                if (!hasCoordinates) orderDiv.classList.add('geocoding-failed');
+                const hasCoords = order.lat && order.lon;
+                if (!hasCoords) orderDiv.classList.add('geocoding-failed');
                 
                 const isEditing = editingOrder === order.orderNumber;
                 if (isEditing) orderDiv.classList.add('edit-mode');
                 
-                // Címmegjelenítés logika
                 let addressHTML;
                 if (isEditing) {
                     addressHTML = `
@@ -437,18 +417,17 @@
                     <div class="order-name">${order.name}</div>
                     <div class="order-phone">📞 ${order.phone}</div>
                     ${addressHTML}
-                    ${!hasCoordinates ? '<div class="geocoding-error-message">⚠️ A cím nem található a térképen!</div>' : ''}
+                    ${!hasCoords ? '<div class="geocoding-error-message">⚠️ Nem található a térképen</div>' : ''}
                     <div class="order-actions">
                         <button class="btn btn-toggle-edit" data-ordernumber="${order.orderNumber}">
-                            ${isEditing ? '✅ Mentés' : '✏️ Cím szerkesztése'}
+                            ${isEditing ? 'Mentés' : 'Szerkesztés'}
                         </button>
-                        <button class="btn btn-regeocode" data-ordernumber="${order.orderNumber}">🔄 Újrakódolás</button>
+                        <button class="btn btn-regeocode" data-ordernumber="${order.orderNumber}">Újrakódolás</button>
                     </div>
                 `;
                 
-                // Sorrendre kattintás - csak akkor, ha NEM szerkesztési módban vagyunk
                 orderDiv.addEventListener('click', (e) => {
-                    if (!e.target.classList.contains('btn') && 
+                    if (!e.target.closest('button') && 
                         !e.target.classList.contains('address-input') &&
                         !isEditing) {
                         toggleOrderSequence(order.orderNumber);
@@ -459,25 +438,22 @@
             });
         }
         
-        // ÚJ: Event delegation az összes dinamikus gombhoz
+        // EVENT DELEGATION - ez a kritikus rész
         document.getElementById('order-list').addEventListener('click', (e) => {
-            // Újrakódolás gomb
-            if (e.target.classList.contains('btn-regeocode')) {
-                e.stopPropagation();
-                const orderNumber = Number(e.target.dataset.ordernumber);
-                reGeocodeSingleOrder(orderNumber, e.target);
+            const button = e.target.closest('button');
+            if (!button) return;
+            
+            e.stopPropagation();
+            const orderNumber = Number(button.dataset.ordernumber);
+            
+            if (button.classList.contains('btn-regeocode')) {
+                reGeocodeSingleOrder(orderNumber, button);
             }
             
-            // Szerkesztés/Mentés gomb
-            if (e.target.classList.contains('btn-toggle-edit')) {
-                e.stopPropagation();
-                const orderNumber = Number(e.target.dataset.ordernumber);
-                
+            if (button.classList.contains('btn-toggle-edit')) {
                 if (editingOrder === orderNumber) {
-                    // Mentés
                     saveAddressEdit(orderNumber);
                 } else {
-                    // Szerkesztés indítása
                     toggleEditMode(orderNumber);
                 }
             }
@@ -495,12 +471,13 @@
             
             geocodedOrders.forEach(order => {
                 const position = getOrderPosition(order.orderNumber);
-                const color = { 
+                const colorMap = { 
                     'Teljesítve': 'green', 
                     'Feldolgozás alatt': 'orange', 
                     'Fizetés folyamatban': 'blue', 
                     'Fizetés előtt': 'red' 
-                }[order.status] || 'gray';
+                };
+                const color = colorMap[order.status] || 'gray';
                 
                 const markerHtml = position
                     ? `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 6px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 16px;">${position}</div>`
@@ -525,15 +502,14 @@
                 map.fitBounds(group.getBounds().pad(0.1));
             }
             
-            // ÚJ: Útvonal rajzolása, ha van legalább 2 sorrendi pont
             if (orderedStops.length >= 2) {
-                const orderedCoords = orderedStops
-                    .map(orderNum => orders.find(o => o.orderNumber === orderNum))
+                const coords = orderedStops
+                    .map(num => orders.find(o => o.orderNumber === num))
                     .filter(o => o && o.lat && o.lon)
                     .map(o => [o.lat, o.lon]);
                 
-                if (orderedCoords.length >= 2) {
-                    routePolyline = L.polyline(orderedCoords, {
+                if (coords.length >= 2) {
+                    routePolyline = L.polyline(coords, {
                         color: '#2196F3',
                         weight: 3,
                         opacity: 0.7,
@@ -553,7 +529,6 @@
             
             document.getElementById('calculate-route-btn').disabled = orderedStops.length < 2;
             document.getElementById('copy-list-btn').disabled = orderedStops.length === 0;
-            document.getElementById('export-csv-btn').disabled = orders.length === 0;
         }
         
         document.querySelectorAll('.checkbox-group input').forEach(cb => {
@@ -564,117 +539,82 @@
             });
         });
         
-        // ÚJ: Lista másolása funkcionalitás
         document.getElementById('copy-list-btn').addEventListener('click', () => {
-            const orderedList = orderedStops
-                .map((orderNum, index) => {
-                    const order = orders.find(o => o.orderNumber === orderNum);
-                    return `${index + 1}. ${order.name} - ${order.phone} - ${order.address}`;
+            const list = orderedStops
+                .map((num, idx) => {
+                    const order = orders.find(o => o.orderNumber === num);
+                    return `${idx + 1}. ${order.name} - ${order.phone} - ${order.address}`;
                 })
                 .join('\n');
             
-            navigator.clipboard.writeText(orderedList).then(() => {
-                alert('✅ Lista vágólapra másolva!');
+            navigator.clipboard.writeText(list).then(() => {
+                alert('✅ Vágólapra másolva!');
             });
         });
         
-        // ÚJ: CSV exportálás
-        document.getElementById('export-csv-btn').addEventListener('click', () => {
-            const csvRows = [
-                ['Sorszám', 'Rendelésszám', 'Név', 'Telefon', 'Utca', 'Város', 'Irányítószám', 'Teljes cím', 'Státusz', 'Latitude', 'Longitude']
-            ];
-            
-            orderedStops.forEach((orderNum, index) => {
-                const order = orders.find(o => o.orderNumber === orderNum);
-                csvRows.push([
-                    index + 1,
-                    order.orderNumber,
-                    order.name,
-                    order.phone,
-                    order.addressSegments.street,
-                    order.addressSegments.city,
-                    order.addressSegments.postcode,
-                    order.address,
-                    order.status,
-                    order.lat || '',
-                    order.lon || ''
-                ]);
-            });
-            
-            const csvContent = csvRows.map(row => row.join(';')).join('\n');
-            const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = `bug-palace-szallitas-${new Date().toISOString().split('T')[0]}.csv`;
-            link.click();
-        });
-        
-        window.addEventListener('load', initMap);
-        
-        // ÚJ: Útvonal optimalizálás (egyszerű verzió - távolság alapján)
-        document.getElementById('calculate-route-btn').addEventListener('click', async () => {
+        document.getElementById('calculate-route-btn').addEventListener('click', () => {
             if (orderedStops.length < 2) return;
             
             const btn = document.getElementById('calculate-route-btn');
-            btn.textContent = '⏳ Számítás...';
+            btn.textContent = 'Számítás...';
             btn.disabled = true;
             
-            // Nearest neighbor algorithm (mohó útvonal optimalizálás)
-            const orderedCoords = orderedStops.map(orderNum => {
-                const order = orders.find(o => o.orderNumber === orderNum);
-                return { orderNum, lat: order.lat, lon: order.lon };
-            }).filter(o => o.lat && o.lon);
-            
-            if (orderedCoords.length < 2) {
-                btn.textContent = '🗺️ Útvonal optimalizálása';
-                btn.disabled = false;
-                return;
-            }
-            
-            // Távolság számítás (Haversine)
-            function distance(coord1, coord2) {
-                const R = 6371; // km
-                const dLat = (coord2.lat - coord1.lat) * Math.PI / 180;
-                const dLon = (coord2.lon - coord1.lon) * Math.PI / 180;
-                const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                    Math.cos(coord1.lat * Math.PI / 180) * Math.cos(coord2.lat * Math.PI / 180) *
-                    Math.sin(dLon/2) * Math.sin(dLon/2);
-                return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            }
-            
-            // Nearest neighbor
-            const optimized = [orderedCoords[0]];
-            const remaining = orderedCoords.slice(1);
-            
-            while (remaining.length > 0) {
-                const current = optimized[optimized.length - 1];
-                let nearest = 0;
-                let minDist = distance(current, remaining[0]);
+            setTimeout(() => {
+                const coords = orderedStops.map(num => {
+                    const order = orders.find(o => o.orderNumber === num);
+                    return { num, lat: order.lat, lon: order.lon };
+                }).filter(o => o.lat && o.lon);
                 
-                for (let i = 1; i < remaining.length; i++) {
-                    const dist = distance(current, remaining[i]);
-                    if (dist < minDist) {
-                        minDist = dist;
-                        nearest = i;
-                    }
+                if (coords.length < 2) {
+                    btn.textContent = '🗺️ Útvonal optimalizálása';
+                    btn.disabled = false;
+                    return;
                 }
                 
-                optimized.push(remaining[nearest]);
-                remaining.splice(nearest, 1);
-            }
-            
-            // Frissítjük a sorrendet
-            orderedStops = optimized.map(o => o.orderNum);
-            
-            btn.textContent = '🗺️ Útvonal optimalizálása';
-            btn.disabled = false;
-            
-            renderOrders();
-            updateMap();
-            updateStats();
-            
-            alert('✅ Útvonal optimalizálva a legrövidebb távolságra!');
+                function distance(c1, c2) {
+                    const R = 6371;
+                    const dLat = (c2.lat - c1.lat) * Math.PI / 180;
+                    const dLon = (c2.lon - c1.lon) * Math.PI / 180;
+                    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                        Math.cos(c1.lat * Math.PI / 180) * Math.cos(c2.lat * Math.PI / 180) *
+                        Math.sin(dLon/2) * Math.sin(dLon/2);
+                    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                }
+                
+                const optimized = [coords[0]];
+                const remaining = coords.slice(1);
+                
+                while (remaining.length > 0) {
+                    const current = optimized[optimized.length - 1];
+                    let nearest = 0;
+                    let minDist = distance(current, remaining[0]);
+                    
+                    for (let i = 1; i < remaining.length; i++) {
+                        const dist = distance(current, remaining[i]);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            nearest = i;
+                        }
+                    }
+                    
+                    optimized.push(remaining[nearest]);
+                    remaining.splice(nearest, 1);
+                }
+                
+                orderedStops = optimized.map(o => o.num);
+                
+                btn.textContent = '🗺️ Útvonal optimalizálása';
+                btn.disabled = false;
+                
+                renderOrders();
+                updateMap();
+                updateStats();
+                
+                alert('✅ Útvonal optimalizálva!');
+            }, 100);
         });
+        
+        window.addEventListener('load', initMap);
     </script>
 </body>
 </html>
