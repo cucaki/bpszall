@@ -26,7 +26,7 @@
         .order-number-badge { position: absolute; top: 10px; right: 10px; background: #007bff; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
         .order-status { display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
         .status-teljesitve { background: #C6EFCE; color: #155724; }
-        .status-feldgozas { background: #FFEB9C; color: #856404; }
+        .status-feldolgozas, .status-feldgozas { background: #FFEB9C; color: #856404; }
         .status-fizetes-folyamatban { background: #DDEBF7; color: #004085; }
         .status-fizetes-elott { background: #FFC7CE; color: #721c24; }
         .order-name { font-weight: 600; font-size: 16px; margin-bottom: 4px; }
@@ -69,8 +69,6 @@
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    
-    <!-- A KULCS BETÖLTÉSE A KÜLÖN FÁJLBÓL -->
     <script src="config.js"></script>
 
     <script>
@@ -124,26 +122,47 @@
             return columns.find(col => keywords.every(kw => col.toLowerCase().includes(kw.toLowerCase())));
         }
 
+        // --- JAVÍTOTT, ROBUZTUS ADATFELDOLGOZÓ ---
         function processRawWooCommerce(rawData) {
             const columns = Object.keys(rawData[0]);
-            const colMap = { num: findColumn(columns, ['order', 'number']), status: findColumn(columns, ['status']), fName: findColumn(columns, ['first', 'shipping']), lName: findColumn(columns, ['last', 'shipping']), addr: findColumn(columns, ['address', 'shipping']), city: findColumn(columns, ['city', 'shipping']), postcode: findColumn(columns, ['postcode', 'shipping']), phone: findColumn(columns, ['phone', 'shipping']) || findColumn(columns, ['phone', 'billing']) };
+            
+            const colMap = {
+                num: findColumn(columns, ['order', 'number']),
+                status: findColumn(columns, ['order', 'status']),
+                fName: findColumn(columns, ['first', 'shipping']),
+                lName: findColumn(columns, ['last', 'shipping']),
+                addr: findColumn(columns, ['address 1&2 (shipping)']), // Pontosabb egyezés
+                city: findColumn(columns, ['city', 'shipping']),
+                postcode: findColumn(columns, ['postcode', 'shipping']),
+                phone: findColumn(columns, ['phone', 'shipping']) || findColumn(columns, ['phone', 'billing'])
+            };
+            
             const grouped = {};
             rawData.forEach(row => {
                 const orderNum = row[colMap.num];
                 if (!orderNum || grouped[orderNum]) return;
-                
+
                 const addressParts = [];
-                if (row[colMap.addr]) addressParts.push(String(row[colMap.addr]).trim());
-                if (row[colMap.city]) addressParts.push(String(row[colMap.city]).trim());
-                if (row[colMap.postcode]) addressParts.push(String(row[colMap.postcode]).trim());
+                // Ha van külön cím, város, irányítószám, azokat használjuk
+                if (row[colMap.addr] || row[colMap.city] || row[colMap.postcode]) {
+                    if (row[colMap.addr]) addressParts.push(String(row[colMap.addr]).trim());
+                    if (row[colMap.city]) addressParts.push(String(row[colMap.city]).trim());
+                    if (row[colMap.postcode]) addressParts.push(String(row[colMap.postcode]).trim());
+                } else {
+                    // Fallback: Ha nincs, megpróbáljuk az általános 'address' oszlopot
+                    const generalAddressCol = findColumn(columns, ['address']);
+                    if (row[generalAddressCol]) addressParts.push(String(row[generalAddressCol]).trim());
+                }
 
                 const finalAddress = addressParts.join(', ');
-
+                
                 grouped[orderNum] = {
-                    orderNumber: orderNum, status: row[colMap.status], name: `${row[colMap.lName] || ''} ${row[colMap.fName] || ''}`.trim(),
-                    phone: colMap.phone ? String(row[colMap.phone]) : '', 
-                    address: finalAddress, 
-                    originalAddress: finalAddress, 
+                    orderNumber: orderNum,
+                    status: row[colMap.status] || 'Ismeretlen',
+                    name: `${row[colMap.lName] || ''} ${row[colMap.fName] || ''}`.trim(),
+                    phone: colMap.phone ? String(row[colMap.phone]) : '',
+                    address: finalAddress,
+                    originalAddress: finalAddress,
                     location: null
                 };
             });
@@ -165,10 +184,14 @@
 
         async function geocodeSingleOrder(orderNumber, address) {
             const order = orders.find(o => o.orderNumber === orderNumber);
-            if (!order) return false;
+            if (!order || !address) return false;
             
             try {
-                const { results } = await geocoder.geocode({ address: address, componentRestrictions: { country: 'HU' } });
+                const request = {
+                    address: address,
+                    componentRestrictions: { country: 'HU' }
+                };
+                const { results } = await geocoder.geocode(request);
                 if (results && results[0]) {
                     order.location = results[0].geometry.location;
                     order.address = results[0].formatted_address;
@@ -298,7 +321,11 @@
             const bounds = new google.maps.LatLngBounds();
             const geocodedOrders = orders.filter(o => o.location);
             
-            if(geocodedOrders.length === 0) return;
+            if(geocodedOrders.length === 0) {
+                map.setCenter({ lat: 47.1625, lng: 19.5033 });
+                map.setZoom(7);
+                return;
+            };
 
             geocodedOrders.forEach(order => {
                 const position = orderedStops.indexOf(order.orderNumber) + 1;
@@ -320,7 +347,10 @@
             }
         }
 
-        function getStatusClass(status) { const map = { 'Teljesítve': 'status-teljesitve', 'Feldolgozás alatt': 'status-feldgozas', 'Fizetés folyamatban': 'status-fizetes-folyamatban', 'Fizetés előtt': 'status-fizetes-elott' }; return map[status] || 'status-feldgozas'; }
+        function getStatusClass(status) { 
+            const statusMap = { 'Teljesítve': 'status-teljesitve', 'Feldolgozás alatt': 'status-feldgozas', 'Fizetés folyamatban': 'status-fizetes-folyamatban', 'Fizetés előtt': 'status-fizetes-elott' };
+            return statusMap[status] || 'status-feldgozas'; 
+        }
         
     </script>
 </body>
