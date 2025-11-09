@@ -26,7 +26,7 @@
         .order-number-badge { position: absolute; top: 10px; right: 10px; background: #007bff; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
         .order-status { display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
         .status-teljesitve { background: #C6EFCE; color: #155724; }
-        .status-feldolgozas { background: #FFEB9C; color: #856404; }
+        .status-feldgozas { background: #FFEB9C; color: #856404; }
         .status-fizetes-folyamatban { background: #DDEBF7; color: #004085; }
         .status-fizetes-elott { background: #FFC7CE; color: #721c24; }
         .order-name { font-weight: 600; font-size: 16px; margin-bottom: 4px; }
@@ -62,13 +62,17 @@
         </header>
         <div class="main-content">
             <div class="sidebar" id="sidebar">
-                 <!-- A tartalom dinamikusan lesz generálva -->
                  <div class="info-box">A kezdéshez tölts fel egy exportált Excel fájlt.</div>
             </div>
             <div id="map"></div>
         </div>
     </div>
     
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    
+    <!-- A KULCS BETÖLTÉSE A KÜLÖN FÁJLBÓL -->
+    <script src="config.js"></script>
+
     <script>
         let map, geocoder, autocomplete;
         let orders = [], markers = [], orderedStops = [];
@@ -83,15 +87,13 @@
             geocoder = new google.maps.Geocoder();
         }
         
-        // --- A Google Maps Script betöltése az API kulccsal ---
         function loadGoogleMapsScript() {
-            const apiKey = 'AIzaSyB9ZbrkvzdCziJksULJ1lXwTlnaosyba9k'; // <<<<<<< A KULCS BEILLESZTVE!
-            if (apiKey === 'IDE_MASOLD_A_GOOGLE_MAPS_API_KULCSODAT') {
-                alert('HIBA: Kérlek, add meg a Google Maps API kulcsodat a JavaScript kódban!');
+            if (typeof GOOGLE_API_KEY === 'undefined' || GOOGLE_API_KEY === 'IDE_ILLESZD_BE_AZ_UJ_BIZTONSAGOS_API_KULCSODAT') {
+                alert('HIBA: Az API kulcs nincs megadva a config.js fájlban!');
                 return;
             }
             const script = document.createElement('script');
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=initMap`;
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_API_KEY}&libraries=places&callback=initMap`;
             script.async = true;
             document.head.appendChild(script);
         }
@@ -106,12 +108,13 @@
                 try {
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, {type: 'array'});
-                    orders = processRawWooCommerce(XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]));
+                    const rawData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+                    orders = processRawWooCommerce(rawData);
                     renderSidebar();
                     await geocodeAllOrders();
                 } catch (error) {
                     console.error('Hiba a fájl feldolgozása során:', error);
-                    document.getElementById('sidebar').innerHTML = '<div class="warning-box">Fájlfeldolgozási hiba!</div>';
+                    document.getElementById('sidebar').innerHTML = '<div class="warning-box">Fájlfeldolgozási hiba! Ellenőrizd a fájl formátumát.</div>';
                 }
             };
             reader.readAsArrayBuffer(file);
@@ -128,22 +131,34 @@
             rawData.forEach(row => {
                 const orderNum = row[colMap.num];
                 if (!orderNum || grouped[orderNum]) return;
-                const addressParts = [row[colMap.addr], row[colMap.city], row[colMap.postcode]].filter(Boolean).map(s => String(s).trim());
+                
+                const addressParts = [];
+                if (row[colMap.addr]) addressParts.push(String(row[colMap.addr]).trim());
+                if (row[colMap.city]) addressParts.push(String(row[colMap.city]).trim());
+                if (row[colMap.postcode]) addressParts.push(String(row[colMap.postcode]).trim());
+
                 const finalAddress = addressParts.join(', ');
+
                 grouped[orderNum] = {
                     orderNumber: orderNum, status: row[colMap.status], name: `${row[colMap.lName] || ''} ${row[colMap.fName] || ''}`.trim(),
-                    phone: colMap.phone ? row[colMap.phone] : '', address: finalAddress, originalAddress: finalAddress, location: null
+                    phone: colMap.phone ? String(row[colMap.phone]) : '', 
+                    address: finalAddress, 
+                    originalAddress: finalAddress, 
+                    location: null
                 };
             });
             return Object.values(grouped);
         }
 
         async function geocodeAllOrders() {
-            const list = document.getElementById('order-list');
             for (let i = 0; i < orders.length; i++) {
                 const order = orders[i];
-                await geocodeSingleOrder(order.orderNumber, order.address);
-                await new Promise(resolve => setTimeout(resolve, 50)); // Rövid szünet a kérések között
+                const success = await geocodeSingleOrder(order.orderNumber, order.address);
+                const orderDiv = document.querySelector(`.order-item[data-ordernumber="${order.orderNumber}"]`);
+                if (orderDiv) {
+                    updateOrderItemView(orderDiv, order);
+                }
+                await new Promise(resolve => setTimeout(resolve, 50));
             }
             updateMapAndMarkers();
         }
@@ -156,17 +171,14 @@
                 const { results } = await geocoder.geocode({ address: address, componentRestrictions: { country: 'HU' } });
                 if (results && results[0]) {
                     order.location = results[0].geometry.location;
-                    order.address = results[0].formatted_address; // Frissítjük a címet a Google által adottra
+                    order.address = results[0].formatted_address;
                     return true;
-                } else {
-                    order.location = null;
-                    return false;
                 }
             } catch (error) {
-                console.error('Geokódolási hiba:', error);
-                order.location = null;
-                return false;
+                console.error(`Geokódolási hiba a ${orderNumber} rendelsnél:`, error);
             }
+            order.location = null;
+            return false;
         }
         
         function renderSidebar() {
@@ -190,8 +202,6 @@
             orderDiv.classList.toggle('has-order', !!position);
             orderDiv.classList.toggle('geocoding-failed', !order.location);
             orderDiv.classList.remove('editing');
-            
-            const parsedAddr = parseAddress(order.address);
 
             orderDiv.innerHTML = `
                 ${position ? `<div class="order-number-badge">${position}</div>` : ''}
@@ -227,7 +237,7 @@
                 const input = orderItem.querySelector('.edit-address-autocomplete');
                 autocomplete = new google.maps.places.Autocomplete(input, {
                     componentRestrictions: { country: "hu" },
-                    fields: ["address_components", "geometry", "name", "formatted_address"],
+                    fields: ["formatted_address"],
                 });
                 input.focus();
             }
@@ -258,7 +268,7 @@
 
         function toggleOrderSequence(orderNumber) {
             const order = orders.find(o => o.orderNumber === orderNumber);
-            if (!order || !order.location) return; // Ne lehessen sorba rakni, ha nincs geokódolva
+            if (!order || !order.location) return;
             
             const index = orderedStops.indexOf(orderNumber);
             if (index > -1) {
@@ -301,19 +311,17 @@
                 markers.push(marker);
                 bounds.extend(order.location);
             });
-            map.fitBounds(bounds);
+            
+            if (geocodedOrders.length > 1) {
+                 map.fitBounds(bounds);
+            } else if (geocodedOrders.length === 1) {
+                map.setCenter(bounds.getCenter());
+                map.setZoom(15);
+            }
         }
 
-        // --- Segédfüggvények (részben újak) ---
-        function getStatusClass(status) { const map = { 'Teljesítve': 'status-teljesitve', 'Feldolgozás alatt': 'status-feldolgozas', 'Fizetés folyamatban': 'status-fizetes-folyamatban', 'Fizetés előtt': 'status-fizetes-elott' }; return map[status] || 'status-feldolgozas'; }
-        function parseAddress(addressString) {
-            const parts = addressString.split(',').map(p => p.trim());
-            return {
-                street: parts.slice(0, -2).join(', ') || parts[0] || '',
-                city: parts[parts.length - 2] || '',
-                postalCode: parts[parts.length - 1] || ''
-            };
-        }
+        function getStatusClass(status) { const map = { 'Teljesítve': 'status-teljesitve', 'Feldolgozás alatt': 'status-feldgozas', 'Fizetés folyamatban': 'status-fizetes-folyamatban', 'Fizetés előtt': 'status-fizetes-elott' }; return map[status] || 'status-feldgozas'; }
+        
     </script>
 </body>
 </html>
