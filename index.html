@@ -71,13 +71,16 @@
     .address-input{ padding:6px 8px; border:1px solid #ddd; border-radius:4px; font-size:13px; font-family:inherit; }
     .address-input:focus{ outline:none; border-color:#2196F3; background:#f9f9f9; }
     .address-display{ font-size:13px; color:#666; padding:6px; background:#f9f9f9; border-radius:4px; margin-top:4px; }
+    .address-original{ font-size:12px; color:#888; padding:6px; margin-top:6px; border-left:3px solid #e0e0e0; background:#fbfbfb; }
 
     .order-actions{ margin-top:8px; display:flex; gap:10px; flex-wrap:wrap; }
-    .btn-regeocode, .btn-toggle-edit{ padding:8px 14px; font-size:12px; border:none; border-radius:4px; font-weight:600; }
+    .btn-regeocode, .btn-toggle-edit, .btn-restore-original{ padding:8px 14px; font-size:12px; border:none; border-radius:4px; font-weight:600; }
     .btn-toggle-edit{ background:#2196F3; color:#fff; }
     .btn-toggle-edit:hover{ background:#1976D2; }
     .btn-regeocode{ background:#f0f0f0; color:#333; }
     .btn-regeocode:hover{ background:#e0e0e0; }
+    .btn-restore-original{ background:#ffe082; color:#333; }
+    .btn-restore-original:hover{ background:#ffd54f; }
 
     .geocoding-error-message{
       font-size:12px; color:#c0392b; font-weight:600; margin-top:8px; padding:5px 8px;
@@ -121,7 +124,7 @@
           </div>
         </div>
 
-        <div class="info-box">💡 <strong>Kattints "Szerkesztés"</strong> → módosítsd a címet → <strong>"Újrakódolás"</strong></div>
+        <div class="info-box">💡 <strong>Kattints "Szerkesztés"</strong> → módosítsd a címet → <strong>"Újrakódolás"</strong>. Másolásnál: Név, Telefon, <u>Eredeti cím</u>, Google Maps link (geokódolt).</div>
 
         <div class="stats" id="stats">
           <div class="stats-row"><span class="stats-label">Összes:</span><span id="total-orders">0</span></div>
@@ -232,9 +235,9 @@
           status: String(row[colMap.status] || '').trim(),
           name: `${row[colMap.lName] || ''} ${row[colMap.fName] || ''}`.trim(),
           phone: colMap.phone ? String(row[colMap.phone] || '').trim() : '',
-          // EREDETI cím külön mezőben megőrizve a másoláshoz
+          // Eredeti cím megőrizve a másoláshoz és referenciához
           originalAddress: full,
-          // Megjelenített / geokódolt cím (szerkeszthető)
+          // Megjelenített / geokódoláshoz használt (szerkeszthető) cím
           address: full,
           addressSegments: parseAddress(full)
         };
@@ -303,7 +306,6 @@
       reader.readAsArrayBuffer(file);
     });
 
-    function getSelectedStatuses(){ return Array.from(document.querySelectorAll('.checkbox-group input:checked')).map(cb => cb.value); }
     function getFilteredOrders(){ const sel = getSelectedStatuses(); return orders.filter(o => sel.includes(o.status)); }
 
     function getOrderPosition(orderNumber){
@@ -364,8 +366,13 @@
                 <span class="address-label">Irányítószám</span>
                 <input class="address-input" id="postcode-${key}" value="${order.addressSegments.postcode || ''}" placeholder="pl. 1061">
               </div>
-            </div>`
-          : `<div class="address-display">📍 ${order.address}</div>`;
+            </div>
+            <div class="address-original">🗂 <strong>Eredeti cím:</strong> ${order.originalAddress}</div>
+          `
+          : `
+            <div class="address-display">📍 ${order.address}</div>
+            <div class="address-original">🗂 <strong>Eredeti cím:</strong> ${order.originalAddress}</div>
+          `;
 
         item.innerHTML = `
           ${pos ? `<div class="order-number-badge">${pos}</div>` : ''}
@@ -377,6 +384,7 @@
           <div class="order-actions">
             <button type="button" class="btn-toggle-edit"> ${isEditing ? '✅ Mentés' : '✏️ Szerkesztés'} </button>
             <button type="button" class="btn-regeocode"> 🔄 Újrakódolás </button>
+            ${isEditing ? '<button type="button" class="btn-restore-original">↩️ Eredeti cím betöltése</button>' : ''}
           </div>
         `;
 
@@ -384,11 +392,39 @@
       });
     }
 
+    // Google Maps link előállítása: priorizáljuk a koordinátát, majd szerkesztett címet, végül eredetit
+    function buildGoogleMapsLink(order) {
+      if (order.lat && order.lon) {
+        // Koordináta alapú: megbízható, appot is jól nyit
+        return `https://www.google.com/maps?q=${order.lat},${order.lon}`;
+      }
+      const target = order.address?.trim() || order.originalAddress?.trim() || '';
+      if (!target) return '';
+      return `https://www.google.com/maps?q=${encodeURIComponent(target)}`;
+    }
+
     // ESEMÉNYDELEGÁLÁS
     document.getElementById('order-list').addEventListener('click', async (e)=>{
       const editBtn = e.target.closest('.btn-toggle-edit');
       const geoBtn  = e.target.closest('.btn-regeocode');
+      const restoreBtn = e.target.closest('.btn-restore-original');
       const item    = e.target.closest('.order-item');
+
+      if (restoreBtn && item) {
+        e.stopPropagation();
+        const key = item.dataset.order;
+        const order = orders.find(o => String(o.orderNumber) === key);
+        if (!order) return;
+        // betöltjük a mezőkbe az eredeti címet (menteni a ✅-val kell)
+        const seg = parseAddress(order.originalAddress || '');
+        const streetEl = document.getElementById(`street-${key}`);
+        const cityEl = document.getElementById(`city-${key}`);
+        const pcEl = document.getElementById(`postcode-${key}`);
+        if (streetEl) streetEl.value = seg.street || '';
+        if (cityEl) cityEl.value = seg.city || '';
+        if (pcEl) pcEl.value = seg.postcode || '';
+        return;
+      }
 
       if (editBtn && item){
         e.stopPropagation();
@@ -514,7 +550,7 @@
       cb.addEventListener('change', ()=>{ renderOrders(); updateMap(); updateStats(); });
     });
 
-    // VÁGÓLAPRA MÁSOLÁS — név, telefon, EREDETI cím (nem a szerkesztett)
+    // VÁGÓLAPRA MÁSOLÁS — Név, Telefon, EREDETI cím, Google Maps link (geokódolt/szerkesztett/eredeti)
     document.getElementById('copy-list-btn').addEventListener('click', ()=>{
       if (!orderedStops.length) return;
       const lines = [];
@@ -525,13 +561,15 @@
         const name = o.name || '';
         const phone = o.phone || '';
         const addressOriginal = o.originalAddress || o.address || '';
-        lines.push(`${i+1}. ${name}\n${phone}\n${addressOriginal}`);
+        const gmaps = buildGoogleMapsLink(o);
+        const linkLine = gmaps ? gmaps : ''; // ha nincs semmi, üres sor
+        lines.push(`${i+1}. ${name}\n${phone}\n${addressOriginal}\n${linkLine}`.trim());
       }
       const text = lines.join('\n');
       navigator.clipboard.writeText(text).then(()=> alert('✅ Vágólapra másolva!'));
     });
 
-    // Egyszerű NN-optimalizálás (távolság alapján), idős becslés NINCS a kérés szerint
+    // Egyszerű NN-optimalizálás (távolság alapján)
     document.getElementById('calculate-route-btn').addEventListener('click', ()=>{
       if (orderedStops.length < 2) return;
       const btn = document.getElementById('calculate-route-btn');
