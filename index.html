@@ -40,6 +40,8 @@
     .btn{ padding:12px 20px; border:none; border-radius:6px; font-weight:600; cursor:pointer; transition:.2s; font-size:14px; }
     .btn-primary{ background:#2196F3; color:#fff; } .btn-primary:hover{ background:#1976D2; }
     .btn-success{ background:#4CAF50; color:#fff; } .btn-success:hover{ background:#45a049; }
+    .btn-warning{ background:#FFB300; color:#333; } .btn-warning:hover{ background:#FFA000; }
+    .btn-neutral{ background:#f0f0f0; color:#333; } .btn-neutral:hover{ background:#e0e0e0; }
     .btn:disabled{ background:#ccc; cursor:not-allowed; }
 
     .order-list { margin-top:20px; }
@@ -73,20 +75,6 @@
     .address-display{ font-size:13px; color:#666; padding:6px; background:#f9f9f9; border-radius:4px; margin-top:4px; }
     .address-original{ font-size:12px; color:#888; padding:6px; margin-top:6px; border-left:3px solid #e0e0e0; background:#fbfbfb; }
 
-    .order-actions{ margin-top:8px; display:flex; gap:10px; flex-wrap:wrap; }
-    .btn-regeocode, .btn-toggle-edit, .btn-restore-original{ padding:8px 14px; font-size:12px; border:none; border-radius:4px; font-weight:600; }
-    .btn-toggle-edit{ background:#2196F3; color:#fff; }
-    .btn-toggle-edit:hover{ background:#1976D2; }
-    .btn-regeocode{ background:#f0f0f0; color:#333; }
-    .btn-regeocode:hover{ background:#e0e0e0; }
-    .btn-restore-original{ background:#ffe082; color:#333; }
-    .btn-restore-original:hover{ background:#ffd54f; }
-
-    .geocoding-error-message{
-      font-size:12px; color:#c0392b; font-weight:600; margin-top:8px; padding:5px 8px;
-      background:#fde2e2; border:1px solid #e7c3c3; border-radius:4px; text-align:center;
-    }
-
     .map-container{ background:#fff; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,.1); overflow:hidden; position:relative; }
     #map{ height:calc(100vh - 200px); min-height:500px; width:100%; z-index:1; }
 
@@ -94,6 +82,35 @@
     .progress-bar{ width:100%; height:6px; background:#e0e0e0; border-radius:3px; overflow:hidden; margin:10px 0; }
     .progress-fill{ height:100%; background:#4CAF50; transition:width .3s; }
     .info-box{ background:#e3f2fd; padding:12px; border-radius:6px; margin-bottom:15px; font-size:13px; color:#1976d2; }
+
+    /* ===== Modal (Tömeges szerkesztő) ===== */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,.35);
+      display: none; align-items: center; justify-content: center; z-index: 9999;
+    }
+    .modal {
+      width: min(860px, 95vw); background: #fff; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.25);
+      overflow: hidden; display: flex; flex-direction: column;
+    }
+    .modal-header {
+      display: flex; align-items:center; justify-content: space-between; padding: 14px 18px; background: #f7f9fc; border-bottom: 1px solid #e6eaf0;
+    }
+    .modal-title { font-weight: 700; font-size: 16px; }
+    .modal-close { border:none; background:transparent; font-size: 22px; cursor: pointer; line-height: 1; }
+    .modal-body { padding: 16px 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .modal-col { display: flex; flex-direction: column; gap: 10px; }
+    .modal-field label { font-size: 12px; font-weight: 700; color:#666; text-transform: uppercase; margin-bottom: 4px; display:block; }
+    .modal-field input { width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; font-size:14px; }
+    .modal-field input:focus { outline:none; border-color:#2196F3; background:#f9f9f9; }
+    .modal-original { background:#fbfbfb; border:1px dashed #ddd; border-radius:6px; padding:10px; font-size:14px; color:#555; }
+    .modal-meta { font-size: 13px; color:#666; }
+    .modal-footer {
+      padding: 12px 18px; border-top:1px solid #e6eaf0; display:flex; align-items:center; justify-content: space-between; gap:12px; background:#fff;
+    }
+    .modal-actions { display:flex; gap:10px; flex-wrap: wrap; }
+    .switch { display:flex; align-items:center; gap:8px; font-size:13px; color:#333; }
+    .modal-progress { font-size: 13px; color:#555; }
+    .kbd { background:#f1f3f5; border:1px solid #dfe3e6; border-bottom-width:2px; padding: 2px 6px; border-radius:4px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size:12px; }
   </style>
 </head>
 <body>
@@ -124,7 +141,7 @@
           </div>
         </div>
 
-        <div class="info-box">💡 <strong>Kattints "Szerkesztés"</strong> → módosítsd a címet → <strong>"Újrakódolás"</strong>. Másolásnál: Név, Telefon, <u>Eredeti cím</u>, Google Maps link (geokódolt).</div>
+        <div class="info-box">💡 Geokódolás után automatikusan felugrik a <b>Tömeges szerkesztő</b> — menj végig a címeken <b>Mentés</b> vagy <b>Kihagyás</b> gombokkal. Másolásnál: Név, Telefon, <u>Eredeti cím</u>, Google Maps link.</div>
 
         <div class="stats" id="stats">
           <div class="stats-row"><span class="stats-label">Összes:</span><span id="total-orders">0</span></div>
@@ -135,6 +152,7 @@
         <div class="action-buttons">
           <button class="btn btn-success" id="calculate-route-btn" disabled>🗺️ Optimalizálás</button>
           <button class="btn btn-primary" id="copy-list-btn" disabled>📋 Másolás</button>
+          <button class="btn btn-warning" id="bulk-edit-btn" disabled>🛠️ Tömeges szerkesztés</button>
         </div>
 
         <div class="order-list" id="order-list">
@@ -148,12 +166,67 @@
     </div>
   </div>
 
+  <!-- ============ MODAL: Tömeges szerkesztő ============ -->
+  <div class="modal-backdrop" id="bulk-modal-backdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="bulkModalTitle">
+      <div class="modal-header">
+        <div class="modal-title" id="bulkModalTitle">🛠️ Tömeges szerkesztő</div>
+        <button class="modal-close" id="bulk-close-btn" title="Bezárás">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-col">
+          <div class="modal-field"><label>Név</label><div id="bulk-name" class="modal-meta">—</div></div>
+          <div class="modal-field"><label>Telefon</label><div id="bulk-phone" class="modal-meta">—</div></div>
+          <div class="modal-field"><label>Eredeti cím (Woo export)</label><div id="bulk-original" class="modal-original">—</div></div>
+        </div>
+        <div class="modal-col">
+          <div class="modal-field">
+            <label>Utca + házszám</label>
+            <input id="bulk-street" placeholder="pl. Andrássy út 1.">
+          </div>
+          <div class="modal-field">
+            <label>Város</label>
+            <input id="bulk-city" placeholder="pl. Budapest">
+          </div>
+          <div class="modal-field">
+            <label>Irányítószám</label>
+            <input id="bulk-postcode" placeholder="pl. 1061">
+          </div>
+          <div class="modal-field">
+            <label>Jelenlegi (szerkesztett) cím</label>
+            <div id="bulk-current" class="modal-original">—</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <label class="switch">
+          <input type="checkbox" id="bulk-only-missing">
+          Csak a <b>geokódolatlan</b> címeken menjek végig
+        </label>
+        <div class="modal-progress" id="bulk-progress">0 / 0</div>
+        <div class="modal-actions">
+          <button class="btn btn-neutral" id="bulk-regeocode">⟲ Újrakódolás</button>
+          <button class="btn btn-neutral" id="bulk-skip">Kihagyás (S)</button>
+          <button class="btn btn-success" id="bulk-save-next">✅ Mentés + Következő (Enter)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <script>
     let map, markers = [], routePolyline = null, orders = [], orderedStops = [], editingOrder = null;
+
+    // Bulk editor state
+    let bulkList = [];     // a sorban szerkesztendő rendelések listája (objektumok referencia szerint)
+    let bulkIndex = 0;     // éppen hányadik
+    const bulkModal = {
+      backdrop: null, name: null, phone: null, original: null, street: null, city: null, postcode: null, current: null,
+      onlyMissing: null, progress: null, btnSaveNext: null, btnSkip: null, btnRegeo: null, btnClose: null
+    };
 
     function initMap() {
       map = L.map('map').setView([47.1625, 19.5033], 7);
@@ -235,11 +308,11 @@
           status: String(row[colMap.status] || '').trim(),
           name: `${row[colMap.lName] || ''} ${row[colMap.fName] || ''}`.trim(),
           phone: colMap.phone ? String(row[colMap.phone] || '').trim() : '',
-          // Eredeti cím megőrizve a másoláshoz és referenciához
-          originalAddress: full,
-          // Megjelenített / geokódoláshoz használt (szerkeszthető) cím
-          address: full,
-          addressSegments: parseAddress(full)
+          originalAddress: full,     // sosem írjuk felül
+          address: full,             // szerkeszthető / geokódolt
+          addressSegments: parseAddress(full),
+          lat: undefined,
+          lon: undefined
         };
       });
       return Object.values(grouped);
@@ -292,12 +365,17 @@
             const pr = Math.round(((i+1)/toGeo.length)*100);
             document.getElementById('progress-fill').style.width = pr + '%';
             document.getElementById('geocode-progress').textContent = String(i+1);
-            await new Promise(r=>setTimeout(r,1100)); // Nominatim tisztelet
+            // Nominatim udvariasság
+            await new Promise(r=>setTimeout(r,1100));
           }
 
           renderOrders();
           updateMap();
           updateStats();
+
+          // geokódolás után automatikusan nyissuk meg a Tömeges szerkesztőt
+          prepareBulkList();
+          openBulkModal();
         }catch(err){
           console.error(err);
           document.getElementById('order-list').innerHTML = '<div class="no-data" style="color:red;">Hiba a feldolgozásban!</div>';
@@ -306,8 +384,11 @@
       reader.readAsArrayBuffer(file);
     });
 
+    // ===== Filter helpers =====
     function getFilteredOrders(){ const sel = getSelectedStatuses(); return orders.filter(o => sel.includes(o.status)); }
+    function getMissingGeocoded(list){ return list.filter(o => !(o.lat && o.lon)); }
 
+    // ===== Ordering helpers =====
     function getOrderPosition(orderNumber){
       const key = String(orderNumber);
       const idx = orderedStops.indexOf(key);
@@ -323,6 +404,15 @@
       renderOrders(); updateMap(); updateStats();
     }
 
+    // ===== Google Maps link =====
+    function buildGoogleMapsLink(order) {
+      if (order.lat && order.lon) return `https://www.google.com/maps?q=${order.lat},${order.lon}`;
+      const target = order.address?.trim() || order.originalAddress?.trim() || '';
+      if (!target) return '';
+      return `https://www.google.com/maps?q=${encodeURIComponent(target)}`;
+    }
+
+    // ===== Render order list =====
     function renderOrders(){
       const wrap = document.getElementById('order-list');
       const filtered = getFilteredOrders();
@@ -342,37 +432,17 @@
         const key = String(order.orderNumber);
         const pos = getOrderPosition(key);
         const hasCoords = !!(order.lat && order.lon);
-        const isEditing = editingOrder === key;
 
         const item = document.createElement('div');
         item.className = 'order-item';
         item.dataset.order = key;
         if (pos) item.classList.add('has-order');
         if (!hasCoords) item.classList.add('geocoding-failed');
-        if (isEditing) item.classList.add('edit-mode');
 
-        const addressHTML = isEditing
-          ? `
-            <div class="address-segments">
-              <div class="address-field full-width">
-                <span class="address-label">Utca + házszám</span>
-                <input class="address-input" id="street-${key}" value="${order.addressSegments.street || ''}" placeholder="pl. Andrássy út 1.">
-              </div>
-              <div class="address-field">
-                <span class="address-label">Város</span>
-                <input class="address-input" id="city-${key}" value="${order.addressSegments.city || ''}" placeholder="pl. Budapest">
-              </div>
-              <div class="address-field">
-                <span class="address-label">Irányítószám</span>
-                <input class="address-input" id="postcode-${key}" value="${order.addressSegments.postcode || ''}" placeholder="pl. 1061">
-              </div>
-            </div>
-            <div class="address-original">🗂 <strong>Eredeti cím:</strong> ${order.originalAddress}</div>
-          `
-          : `
-            <div class="address-display">📍 ${order.address}</div>
-            <div class="address-original">🗂 <strong>Eredeti cím:</strong> ${order.originalAddress}</div>
-          `;
+        const addressHTML = `
+          <div class="address-display">📍 ${order.address}</div>
+          <div class="address-original">🗂 <strong>Eredeti cím:</strong> ${order.originalAddress}</div>
+        `;
 
         item.innerHTML = `
           ${pos ? `<div class="order-number-badge">${pos}</div>` : ''}
@@ -381,115 +451,15 @@
           <div class="order-phone">📞 ${order.phone}</div>
           ${addressHTML}
           ${!hasCoords ? '<div class="geocoding-error-message">⚠️ Nem található</div>' : ''}
-          <div class="order-actions">
-            <button type="button" class="btn-toggle-edit"> ${isEditing ? '✅ Mentés' : '✏️ Szerkesztés'} </button>
-            <button type="button" class="btn-regeocode"> 🔄 Újrakódolás </button>
-            ${isEditing ? '<button type="button" class="btn-restore-original">↩️ Eredeti cím betöltése</button>' : ''}
-          </div>
         `;
 
+        // kártyára kattintás = sorrendbe tétel
+        item.addEventListener('click', ()=> toggleOrderSequence(key));
         wrap.appendChild(item);
       });
     }
 
-    // Google Maps link előállítása: priorizáljuk a koordinátát, majd szerkesztett címet, végül eredetit
-    function buildGoogleMapsLink(order) {
-      if (order.lat && order.lon) {
-        // Koordináta alapú: megbízható, appot is jól nyit
-        return `https://www.google.com/maps?q=${order.lat},${order.lon}`;
-      }
-      const target = order.address?.trim() || order.originalAddress?.trim() || '';
-      if (!target) return '';
-      return `https://www.google.com/maps?q=${encodeURIComponent(target)}`;
-    }
-
-    // ESEMÉNYDELEGÁLÁS
-    document.getElementById('order-list').addEventListener('click', async (e)=>{
-      const editBtn = e.target.closest('.btn-toggle-edit');
-      const geoBtn  = e.target.closest('.btn-regeocode');
-      const restoreBtn = e.target.closest('.btn-restore-original');
-      const item    = e.target.closest('.order-item');
-
-      if (restoreBtn && item) {
-        e.stopPropagation();
-        const key = item.dataset.order;
-        const order = orders.find(o => String(o.orderNumber) === key);
-        if (!order) return;
-        // betöltjük a mezőkbe az eredeti címet (menteni a ✅-val kell)
-        const seg = parseAddress(order.originalAddress || '');
-        const streetEl = document.getElementById(`street-${key}`);
-        const cityEl = document.getElementById(`city-${key}`);
-        const pcEl = document.getElementById(`postcode-${key}`);
-        if (streetEl) streetEl.value = seg.street || '';
-        if (cityEl) cityEl.value = seg.city || '';
-        if (pcEl) pcEl.value = seg.postcode || '';
-        return;
-      }
-
-      if (editBtn && item){
-        e.stopPropagation();
-        const key = item.dataset.order;
-        if (editingOrder === key){
-          // mentés
-          const order = orders.find(o => String(o.orderNumber) === key);
-          if (order){
-            const street = (document.getElementById(`street-${key}`)?.value || '').trim();
-            const city = (document.getElementById(`city-${key}`)?.value || '').trim();
-            const postcode = (document.getElementById(`postcode-${key}`)?.value || '').trim();
-            order.addressSegments = { street, city, postcode };
-            order.address = buildFullAddress(order.addressSegments); // csak a megjelenített/geo cím változik
-          }
-          editingOrder = null;
-        } else {
-          editingOrder = key;
-        }
-        renderOrders(); updateStats();
-        return;
-      }
-
-      if (geoBtn && item){
-        e.stopPropagation();
-        const key = item.dataset.order;
-        const order = orders.find(o => String(o.orderNumber) === key);
-        if (!order) return;
-
-        geoBtn.disabled = true;
-        geoBtn.textContent = 'Kódolás...';
-
-        if (editingOrder === key){
-          // auto-mentés szerkesztésből
-          const street = (document.getElementById(`street-${key}`)?.value || '').trim();
-          const city = (document.getElementById(`city-${key}`)?.value || '').trim();
-          const postcode = (document.getElementById(`postcode-${key}`)?.value || '').trim();
-          order.addressSegments = { street, city, postcode };
-          order.address = buildFullAddress(order.addressSegments);
-          editingOrder = null;
-          renderOrders();
-        }
-
-        const coords = await geocodeAddress(order.address); // szerkesztett cím alapján
-        if (coords){ order.lat = coords.lat; order.lon = coords.lon; }
-        else{
-          delete order.lat; delete order.lon;
-          const idx = orderedStops.indexOf(key);
-          if (idx > -1) orderedStops.splice(idx,1);
-        }
-
-        geoBtn.disabled = false;
-        geoBtn.textContent = '🔄 Újrakódolás';
-
-        renderOrders(); updateMap(); updateStats();
-        return;
-      }
-
-      // Ha nem gomb, hanem a kártya üres része
-      if (item){
-        const key = item.dataset.order;
-        if (editingOrder === key) return; // szerkesztés közben ne rendezzen
-        toggleOrderSequence(key);
-      }
-    });
-
+    // ===== Map =====
     function updateMap(){
       if (!map) return;
       markers.forEach(m => map.removeLayer(m)); markers = [];
@@ -544,13 +514,14 @@
       document.getElementById('ordered-count').textContent = String(orderedStops.length);
       document.getElementById('calculate-route-btn').disabled = orderedStops.length < 2;
       document.getElementById('copy-list-btn').disabled = orderedStops.length === 0;
+      document.getElementById('bulk-edit-btn').disabled = filtered.length === 0;
     }
 
     document.querySelectorAll('.checkbox-group input').forEach(cb=>{
       cb.addEventListener('change', ()=>{ renderOrders(); updateMap(); updateStats(); });
     });
 
-    // VÁGÓLAPRA MÁSOLÁS — Név, Telefon, EREDETI cím, Google Maps link (geokódolt/szerkesztett/eredeti)
+    // ===== Copy to clipboard (Név, Telefon, EREDETI cím, Google Maps link) =====
     document.getElementById('copy-list-btn').addEventListener('click', ()=>{
       if (!orderedStops.length) return;
       const lines = [];
@@ -562,14 +533,13 @@
         const phone = o.phone || '';
         const addressOriginal = o.originalAddress || o.address || '';
         const gmaps = buildGoogleMapsLink(o);
-        const linkLine = gmaps ? gmaps : ''; // ha nincs semmi, üres sor
-        lines.push(`${i+1}. ${name}\n${phone}\n${addressOriginal}\n${linkLine}`.trim());
+        lines.push(`${i+1}. ${name}\n${phone}\n${addressOriginal}\n${gmaps}`.trim());
       }
       const text = lines.join('\n');
       navigator.clipboard.writeText(text).then(()=> alert('✅ Vágólapra másolva!'));
     });
 
-    // Egyszerű NN-optimalizálás (távolság alapján)
+    // ===== Simple NN optimization =====
     document.getElementById('calculate-route-btn').addEventListener('click', ()=>{
       if (orderedStops.length < 2) return;
       const btn = document.getElementById('calculate-route-btn');
@@ -604,6 +574,147 @@
       }, 120);
     });
 
+    // ===== Bulk editor logic =====
+    function prepareBulkList() {
+      const filtered = getFilteredOrders();
+      const onlyMissing = bulkModal.onlyMissing?.checked ?? false;
+      bulkList = onlyMissing ? getMissingGeocoded(filtered) : [...filtered];
+      bulkIndex = 0;
+      updateBulkProgress();
+      document.getElementById('bulk-edit-btn').disabled = bulkList.length === 0;
+    }
+
+    function openBulkModal() {
+      if (!bulkModal.backdrop) {
+        // cache refs
+        bulkModal.backdrop  = document.getElementById('bulk-modal-backdrop');
+        bulkModal.name      = document.getElementById('bulk-name');
+        bulkModal.phone     = document.getElementById('bulk-phone');
+        bulkModal.original  = document.getElementById('bulk-original');
+        bulkModal.street    = document.getElementById('bulk-street');
+        bulkModal.city      = document.getElementById('bulk-city');
+        bulkModal.postcode  = document.getElementById('bulk-postcode');
+        bulkModal.current   = document.getElementById('bulk-current');
+        bulkModal.onlyMissing = document.getElementById('bulk-only-missing');
+        bulkModal.progress  = document.getElementById('bulk-progress');
+        bulkModal.btnSaveNext = document.getElementById('bulk-save-next');
+        bulkModal.btnSkip   = document.getElementById('bulk-skip');
+        bulkModal.btnRegeo  = document.getElementById('bulk-regeocode');
+        bulkModal.btnClose  = document.getElementById('bulk-close-btn');
+
+        bulkModal.btnClose.addEventListener('click', closeBulkModal);
+        bulkModal.onlyMissing.addEventListener('change', ()=>{
+          prepareBulkList(); renderBulkModal();
+        });
+        bulkModal.btnSaveNext.addEventListener('click', bulkSaveAndNext);
+        bulkModal.btnSkip.addEventListener('click', bulkSkip);
+        bulkModal.btnRegeo.addEventListener('click', bulkRegeocode);
+
+        // keyboard shortcuts
+        document.addEventListener('keydown', (e)=>{
+          if (bulkModal.backdrop.style.display !== 'flex') return;
+          if (e.key === 'Enter') { e.preventDefault(); bulkSaveAndNext(); }
+          if (e.key.toLowerCase() === 's') { e.preventDefault(); bulkSkip(); }
+          if (e.key === 'Escape') { e.preventDefault(); closeBulkModal(); }
+        });
+      }
+
+      prepareBulkList();
+      renderBulkModal();
+      bulkModal.backdrop.style.display = 'flex';
+      bulkModal.street.focus();
+    }
+
+    function closeBulkModal() {
+      if (bulkModal.backdrop) bulkModal.backdrop.style.display = 'none';
+    }
+
+    function updateBulkProgress() {
+      bulkModal?.progress && (bulkModal.progress.textContent = `${Math.min(bulkIndex+1, bulkList.length)} / ${bulkList.length}`);
+    }
+
+    function renderBulkModal() {
+      if (!bulkList.length) {
+        bulkModal.name.textContent = '—';
+        bulkModal.phone.textContent = '—';
+        bulkModal.original.textContent = 'Nincs tétel a listában a jelenlegi szűrők mellett.';
+        bulkModal.street.value = '';
+        bulkModal.city.value = '';
+        bulkModal.postcode.value = '';
+        bulkModal.current.textContent = '—';
+        updateBulkProgress();
+        return;
+      }
+      const o = bulkList[Math.min(bulkIndex, bulkList.length-1)];
+      bulkModal.name.textContent = o.name || '—';
+      bulkModal.phone.textContent = o.phone || '—';
+      bulkModal.original.textContent = o.originalAddress || '—';
+
+      const seg = o.addressSegments || parseAddress(o.address || '');
+      bulkModal.street.value = seg.street || '';
+      bulkModal.city.value = seg.city || '';
+      bulkModal.postcode.value = seg.postcode || '';
+      bulkModal.current.textContent = o.address || '';
+
+      updateBulkProgress();
+    }
+
+    async function bulkSaveAndNext() {
+      if (!bulkList.length) return;
+      const o = bulkList[Math.min(bulkIndex, bulkList.length-1)];
+
+      // mentés a mezőkből
+      const street = bulkModal.street.value.trim();
+      const city = bulkModal.city.value.trim();
+      const postcode = bulkModal.postcode.value.trim();
+      o.addressSegments = { street, city, postcode };
+      o.address = buildFullAddress(o.addressSegments);
+
+      // geokódolás azonnal
+      const coords = await geocodeAddress(o.address);
+      if (coords) { o.lat = coords.lat; o.lon = coords.lon; }
+      else { delete o.lat; delete o.lon; }
+
+      // tovább a következőre
+      if (bulkIndex < bulkList.length - 1) {
+        bulkIndex++;
+        renderBulkModal();
+      } else {
+        closeBulkModal();
+      }
+
+      renderOrders(); updateMap(); updateStats();
+    }
+
+    async function bulkRegeocode() {
+      if (!bulkList.length) return;
+      const o = bulkList[Math.min(bulkIndex, bulkList.length-1)];
+      const coords = await geocodeAddress(buildFullAddress({
+        street: bulkModal.street.value.trim(),
+        city: bulkModal.city.value.trim(),
+        postcode: bulkModal.postcode.value.trim()
+      }));
+      if (coords) { o.lat = coords.lat; o.lon = coords.lon; }
+      else { delete o.lat; delete o.lon; }
+      renderOrders(); updateMap(); updateStats();
+    }
+
+    function bulkSkip() {
+      if (!bulkList.length) return;
+      if (bulkIndex < bulkList.length - 1) {
+        bulkIndex++;
+        renderBulkModal();
+      } else {
+        closeBulkModal();
+      }
+    }
+
+    // oldalsó gomb a modál újranyitásához
+    document.getElementById('bulk-edit-btn').addEventListener('click', ()=>{
+      openBulkModal();
+    });
+
+    // init
     window.addEventListener('load', initMap);
   </script>
 </body>
