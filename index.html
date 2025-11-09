@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bug Palace - Szállítási Lista v2</title>
+    <title>Bug Palace - Szállítási Lista</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
@@ -62,9 +62,9 @@
         .address-input:focus { outline: none; border-color: #2196F3; background: #f9f9f9; }
         .address-display { font-size: 13px; color: #666; padding: 6px; background: #f9f9f9; border-radius: 4px; margin-top: 4px; }
         .order-actions { margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap; }
-        .btn-regeocode { padding: 6px 12px; font-size: 12px; background: #f0f0f0; color: #333; border: 1px solid #ccc; }
+        .btn-regeocode { padding: 6px 12px; font-size: 12px; background: #f0f0f0; color: #333; border: 1px solid #ccc; cursor: pointer; }
         .btn-regeocode:hover { background: #e0e0e0; }
-        .btn-toggle-edit { padding: 6px 12px; font-size: 12px; background: #2196F3; color: white; border: none; }
+        .btn-toggle-edit { padding: 6px 12px; font-size: 12px; background: #2196F3; color: white; border: none; cursor: pointer; }
         .btn-toggle-edit:hover { background: #1976D2; }
         .map-container { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden; position: relative; }
         #map { height: calc(100vh - 200px); min-height: 500px; width: 100%; z-index: 1; }
@@ -380,6 +380,8 @@
             sortedOrders.forEach(order => {
                 const orderDiv = document.createElement('div');
                 orderDiv.className = 'order-item';
+                orderDiv.dataset.ordernumber = order.orderNumber;
+                
                 const position = getOrderPosition(order.orderNumber);
                 if (position) orderDiv.classList.add('has-order');
                 
@@ -426,36 +428,44 @@
                     </div>
                 `;
                 
-                orderDiv.addEventListener('click', (e) => {
-                    if (!e.target.closest('button') && 
-                        !e.target.classList.contains('address-input') &&
-                        !isEditing) {
-                        toggleOrderSequence(order.orderNumber);
-                    }
-                });
-                
                 orderList.appendChild(orderDiv);
             });
         }
         
-        // EVENT DELEGATION - ez a kritikus rész
-        document.getElementById('order-list').addEventListener('click', (e) => {
-            const button = e.target.closest('button');
-            if (!button) return;
-            
-            e.stopPropagation();
-            const orderNumber = Number(button.dataset.ordernumber);
-            
-            if (button.classList.contains('btn-regeocode')) {
-                reGeocodeSingleOrder(orderNumber, button);
+        // TISZTA EVENT DELEGATION - minden itt történik
+        document.getElementById('order-list').addEventListener('click', function(e) {
+            // Ha gombra kattintottunk
+            if (e.target.tagName === 'BUTTON') {
+                e.stopPropagation();
+                const orderNumber = Number(e.target.dataset.ordernumber);
+                
+                if (e.target.classList.contains('btn-toggle-edit')) {
+                    console.log('Szerkesztés gomb kattintás:', orderNumber);
+                    if (editingOrder === orderNumber) {
+                        saveAddressEdit(orderNumber);
+                    } else {
+                        toggleEditMode(orderNumber);
+                    }
+                    return;
+                }
+                
+                if (e.target.classList.contains('btn-regeocode')) {
+                    console.log('Újrakódolás gomb kattintás:', orderNumber);
+                    reGeocodeSingleOrder(orderNumber, e.target);
+                    return;
+                }
             }
             
-            if (button.classList.contains('btn-toggle-edit')) {
-                if (editingOrder === orderNumber) {
-                    saveAddressEdit(orderNumber);
-                } else {
-                    toggleEditMode(orderNumber);
-                }
+            // Ha input mezőre kattintottunk, ne csináljunk semmit
+            if (e.target.classList.contains('address-input')) {
+                return;
+            }
+            
+            // Ha az order-item-re kattintottunk (de nem gombra vagy inputra)
+            const orderItem = e.target.closest('.order-item');
+            if (orderItem && !orderItem.classList.contains('edit-mode')) {
+                const orderNumber = Number(orderItem.dataset.ordernumber);
+                toggleOrderSequence(orderNumber);
             }
         });
         
