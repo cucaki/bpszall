@@ -110,7 +110,6 @@
             return columns.find(col => keywords.every(kw => col.toLowerCase().includes(kw.toLowerCase())));
         }
 
-        // --- VISSZAÁLLÍTOTT, MŰKÖDŐ ADATFELDOLGOZÓ ---
         function processRawWooCommerce(rawData) {
             const columns = Object.keys(rawData[0]);
             
@@ -137,11 +136,6 @@
                 
                 let finalAddress = addressParts.join(', ');
 
-                if (!finalAddress) {
-                    const anyAddrCol = findColumn(columns, ['address']);
-                    if (row[anyAddrCol]) finalAddress = String(row[anyAddrCol]).trim();
-                }
-
                 grouped[orderNum] = {
                     orderNumber: orderNum,
                     status: row[colMap.status] || 'Ismeretlen',
@@ -155,11 +149,12 @@
             return Object.values(grouped);
         }
 
-
+        // --- JAVÍTOTT CÍMKERESŐ ---
         async function geocodeAddress(address) {
             if (!address || address.trim() === '') return null;
+            const query = address + ', Magyarország'; // Visszaállítva a működő módszerre
             try {
-                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&countrycodes=hu&limit=1`);
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
                 const data = await response.json();
                 if (data && data.length > 0) {
                     return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
@@ -181,7 +176,7 @@
                 if (orderDiv) {
                     updateOrderItemView(orderDiv, order);
                 }
-                await new Promise(resolve => setTimeout(resolve, 1100)); // Rate limit
+                await new Promise(resolve => setTimeout(resolve, 1100)); // Fontos a Nominatim limit miatt
             }
             updateMapAndMarkers();
         }
@@ -313,7 +308,11 @@
 
             geocodedOrders.forEach(order => {
                 const position = orderedStops.indexOf(order.orderNumber) + 1;
-                const iconHtml = position ? `<div style="background-color: #007bff; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5);">${position}</div>` : '';
+                let iconHtml = '<div style="background-color: #dc3545; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.5);"></div>';
+                if(position) {
+                    iconHtml = `<div style="background-color: #007bff; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5);">${position}</div>`;
+                }
+
                 const marker = L.marker([order.location.lat, order.location.lon], {
                     icon: L.divIcon({ className: 'custom-marker', html: iconHtml, iconSize: [30, 30], iconAnchor: [15, 15] })
                 }).addTo(map);
@@ -325,7 +324,6 @@
             const group = L.featureGroup(markers);
             map.fitBounds(group.getBounds().pad(0.1));
 
-            // Frissítsük a lista nézetet is a sorrend miatt
             document.querySelectorAll('.order-item').forEach(div => {
                 const num = Number(div.dataset.ordernumber);
                 const pos = orderedStops.indexOf(num) + 1;
