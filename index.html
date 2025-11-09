@@ -43,12 +43,11 @@
     .btn:disabled{ background:#ccc; cursor:not-allowed; }
 
     .order-list { margin-top:20px; }
-    .order-item { padding:12px; border:1px solid #e0e0e0; border-radius:6px; margin-bottom:10px; background:#fff; position:relative; transition:.15s; }
+    .order-item { padding:12px; border:1px solid #e0e0e0; border-radius:6px; margin-bottom:10px; background:#fff; position:relative; transition:.15s; cursor:pointer; }
     .order-item:hover{ border-color:#4CAF50; box-shadow:0 2px 4px rgba(0,0,0,.08); }
     .order-item.has-order{ border-color:#2196F3; background:#e3f2fd; }
     .order-item.geocoding-failed{ background:#fff0f0; border-color:#e0b0b0; }
     .order-item.edit-mode{ background:#fffef0; }
-    .order-item { cursor:pointer; }
     .order-actions, .order-actions * { cursor:default; }
 
     .order-number-badge{
@@ -233,6 +232,9 @@
           status: String(row[colMap.status] || '').trim(),
           name: `${row[colMap.lName] || ''} ${row[colMap.fName] || ''}`.trim(),
           phone: colMap.phone ? String(row[colMap.phone] || '').trim() : '',
+          // EREDETI cím külön mezőben megőrizve a másoláshoz
+          originalAddress: full,
+          // Megjelenített / geokódolt cím (szerkeszthető)
           address: full,
           addressSegments: parseAddress(full)
         };
@@ -301,10 +303,8 @@
       reader.readAsArrayBuffer(file);
     });
 
-    function getFilteredOrders(){
-      const sel = getSelectedStatuses();
-      return orders.filter(o => sel.includes(o.status));
-    }
+    function getSelectedStatuses(){ return Array.from(document.querySelectorAll('.checkbox-group input:checked')).map(cb => cb.value); }
+    function getFilteredOrders(){ const sel = getSelectedStatuses(); return orders.filter(o => sel.includes(o.status)); }
 
     function getOrderPosition(orderNumber){
       const key = String(orderNumber);
@@ -384,7 +384,7 @@
       });
     }
 
-    // ESEMÉNYDELEGÁLÁS – ez oldja meg a "nem enged kattintani" problémát
+    // ESEMÉNYDELEGÁLÁS
     document.getElementById('order-list').addEventListener('click', async (e)=>{
       const editBtn = e.target.closest('.btn-toggle-edit');
       const geoBtn  = e.target.closest('.btn-regeocode');
@@ -401,7 +401,7 @@
             const city = (document.getElementById(`city-${key}`)?.value || '').trim();
             const postcode = (document.getElementById(`postcode-${key}`)?.value || '').trim();
             order.addressSegments = { street, city, postcode };
-            order.address = buildFullAddress(order.addressSegments);
+            order.address = buildFullAddress(order.addressSegments); // csak a megjelenített/geo cím változik
           }
           editingOrder = null;
         } else {
@@ -431,7 +431,7 @@
           renderOrders();
         }
 
-        const coords = await geocodeAddress(order.address);
+        const coords = await geocodeAddress(order.address); // szerkesztett cím alapján
         if (coords){ order.lat = coords.lat; order.lon = coords.lon; }
         else{
           delete order.lat; delete order.lon;
@@ -449,8 +449,7 @@
       // Ha nem gomb, hanem a kártya üres része
       if (item){
         const key = item.dataset.order;
-        // Szerkesztő módban a kártyára kattintás ne rendezzen
-        if (editingOrder === key) return;
+        if (editingOrder === key) return; // szerkesztés közben ne rendezzen
         toggleOrderSequence(key);
       }
     });
@@ -515,14 +514,24 @@
       cb.addEventListener('change', ()=>{ renderOrders(); updateMap(); updateStats(); });
     });
 
+    // VÁGÓLAPRA MÁSOLÁS — név, telefon, EREDETI cím (nem a szerkesztett)
     document.getElementById('copy-list-btn').addEventListener('click', ()=>{
-      const list = orderedStops.map((num, i)=>{
-        const o = orders.find(x => String(x.orderNumber) === String(num));
-        return `${i+1}. ${o.name} - ${o.phone} - ${o.address}`;
-      }).join('\n');
-      navigator.clipboard.writeText(list).then(()=> alert('✅ Vágólapra másolva!'));
+      if (!orderedStops.length) return;
+      const lines = [];
+      for (let i=0;i<orderedStops.length;i++){
+        const key = String(orderedStops[i]);
+        const o = orders.find(x => String(x.orderNumber) === key);
+        if (!o) continue;
+        const name = o.name || '';
+        const phone = o.phone || '';
+        const addressOriginal = o.originalAddress || o.address || '';
+        lines.push(`${i+1}. ${name}\n${phone}\n${addressOriginal}`);
+      }
+      const text = lines.join('\n');
+      navigator.clipboard.writeText(text).then(()=> alert('✅ Vágólapra másolva!'));
     });
 
+    // Egyszerű NN-optimalizálás (távolság alapján), idős becslés NINCS a kérés szerint
     document.getElementById('calculate-route-btn').addEventListener('click', ()=>{
       if (orderedStops.length < 2) return;
       const btn = document.getElementById('calculate-route-btn');
