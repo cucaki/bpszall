@@ -51,13 +51,17 @@
         .status-fizetes-elott { background: #FFC7CE; color: #721c24; }
         .order-name { font-weight: 600; margin-bottom: 4px; }
         .order-phone, .order-address { font-size: 13px; color: #666; margin-bottom: 2px; }
+        
+        /* --- ÚJ STÍLUS: Eredeti cím --- */
+        .order-address-original { font-size: 11px; color: #888; margin-top: 4px; font-style: italic; }
+
         .order-time { font-size: 13px; color: #FF9800; font-weight: 600; background: #FFF3E0; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 6px; }
         .order-actions { margin-top: 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .btn-action { padding: 6px 12px; font-size: 12px; background: #f0f0f0; color: #333; border: 1px solid #ccc; }
         .btn-action:hover { background: #e0e0e0; }
         .order-maps-link { display: inline-block; padding: 6px 12px; background: #4285F4; color: white; text-decoration: none; border-radius: 4px; font-size: 12px; font-weight: 600; }
         .order-maps-link:hover { background: #1976D2; }
-        .edit-form { display: none; padding-top: 10px; }
+        .edit-form { display: none; padding-top: 10px; border-top: 1px dashed #ccc; margin-top: 10px; }
         .order-item.editing .order-details { display: none; }
         .order-item.editing .edit-form { display: block; }
         .edit-form-group { margin-bottom: 8px; }
@@ -66,8 +70,6 @@
         .edit-form-buttons { display: flex; gap: 10px; margin-top: 12px; }
         .btn-save-geocode { background-color: #007bff; color: white; flex-grow: 1; }
         .btn-cancel-edit { background-color: #6c757d; color: white; }
-
-        /* --- ÚJ GOMB VISSZAJELZŐ STÍLUSOK --- */
         .btn-save-geocode.success { background-color: #28a745 !important; border-color: #28a745 !important; }
         .btn-save-geocode.error { background-color: #dc3545 !important; border-color: #dc3545 !important; }
 
@@ -124,26 +126,40 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     
     <script>
-        // A globális változók és a legtöbb függvény változatlan maradt, csak a relevánsakat módosítjuk.
         let map, markers = [], routePolyline = null, orders = [], orderedStops = [], routeTimes = {};
 
-        // ... (initMap, getOSRMRoute, getStatusClass, getSelectedStatuses, findColumn, stb. változatlanok) ...
-        function initMap() { try { map = L.map('map').setView([47.1625, 19.5033], 7); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors', maxZoom: 19 }).addTo(map); setTimeout(() => map.invalidateSize(), 100); } catch (e) { console.error('Térkép hiba:', e); } }
-        async function getOSRMRoute(coordinates) { try { const coords = coordinates.map(c => `${c.lon},${c.lat}`).join(';'); const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 10000); const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`, { signal: controller.signal }); clearTimeout(timeout); const data = await response.json(); if (data.code === 'Ok' && data.routes?.length > 0) { const route = data.routes[0]; return { distance: route.distance / 1000, duration: route.duration / 60, geometry: route.geometry.coordinates }; } } catch (e) { console.error('OSRM hiba:', e); } return null; }
-        function getStatusClass(status) { const map = { 'Teljesítve': 'status-teljesitve', 'Feldolgozás alatt': 'status-feldolgozas', 'Fizetés folyamatban': 'status-fizetes-folyamatban', 'Fizetés előtt': 'status-fizetes-elott' }; return map[status] || 'status-feldolgozas'; }
-        function getSelectedStatuses() { return Array.from(document.querySelectorAll('.checkbox-group input:checked')).map(cb => cb.value); }
-        function findColumn(columns, keywords) { return columns.find(col => keywords.every(kw => col.toLowerCase().includes(kw.toLowerCase()))); }
-        function processRawWooCommerce(rawData) { const columns = Object.keys(rawData[0]); const colMap = { num: findColumn(columns, ['order', 'number']), status: findColumn(columns, ['status']), fName: findColumn(columns, ['first', 'shipping']), lName: findColumn(columns, ['last', 'shipping']), addr: findColumn(columns, ['address', 'shipping']), city: findColumn(columns, ['city', 'shipping']), postcode: findColumn(columns, ['postcode', 'shipping']), phone: findColumn(columns, ['phone', 'shipping']) || findColumn(columns, ['phone', 'billing']) }; const grouped = {}; rawData.forEach(row => { const orderNum = row[colMap.num]; if (!orderNum || grouped[orderNum]) return; const addressParts = []; if (row[colMap.addr]) addressParts.push(String(row[colMap.addr]).trim()); if (row[colMap.city]) { let city = String(row[colMap.city]).trim(); if (city.toLowerCase().includes('budapest')) city = 'Budapest'; addressParts.push(city); } if (row[colMap.postcode]) addressParts.push(row[colMap.postcode]); grouped[orderNum] = { orderNumber: orderNum, status: row[colMap.status], name: `${row[colMap.lName] || ''} ${row[colMap.fName] || ''}`.trim(), phone: colMap.phone ? row[colMap.phone] : '', address: addressParts.join(', ') }; }); return Object.values(grouped); }
-        async function geocodeAddress(address) { try { const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 5000); const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&countrycodes=hu&limit=1`, { signal: controller.signal }); clearTimeout(timeout); const data = await response.json(); if (data?.length > 0) return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) }; } catch (e) { console.error('Geokódolási hiba:', e); } return null; }
-        
-        document.getElementById('file-upload').addEventListener('change', async function(e) { /* ... Fájlfeldolgozó logika változatlan ... */ });
-        function getFilteredOrders() { return orders.filter(order => getSelectedStatuses().includes(order.status)); }
-        function getOrderPosition(orderNumber) { return orderedStops.indexOf(orderNumber) + 1 || null; }
-        function toggleOrderSequence(orderNumber) { const order = orders.find(o => o.orderNumber === orderNumber); if (!order || !order.lat || !order.lon) return; const index = orderedStops.indexOf(orderNumber); if (index !== -1) orderedStops.splice(index, 1); else orderedStops.push(orderNumber); routeTimes = {}; renderOrders(); updateMap(); updateStats(); }
+        // --- MÓDOSÍTOTT FÜGGVÉNY: Eredeti cím tárolása ---
+        function processRawWooCommerce(rawData) {
+            const columns = Object.keys(rawData[0]);
+            const colMap = { num: findColumn(columns, ['order', 'number']), status: findColumn(columns, ['status']), fName: findColumn(columns, ['first', 'shipping']), lName: findColumn(columns, ['last', 'shipping']), addr: findColumn(columns, ['address', 'shipping']), city: findColumn(columns, ['city', 'shipping']), postcode: findColumn(columns, ['postcode', 'shipping']), phone: findColumn(columns, ['phone', 'shipping']) || findColumn(columns, ['phone', 'billing']) };
+            const grouped = {};
+            rawData.forEach(row => {
+                const orderNum = row[colMap.num];
+                if (!orderNum || grouped[orderNum]) return;
+                const addressParts = [];
+                if (row[colMap.addr]) addressParts.push(String(row[colMap.addr]).trim());
+                if (row[colMap.city]) {
+                    let city = String(row[colMap.city]).trim();
+                    if (city.toLowerCase().includes('budapest')) city = 'Budapest';
+                    addressParts.push(city);
+                }
+                if (row[colMap.postcode]) addressParts.push(row[colMap.postcode]);
+                
+                const finalAddress = addressParts.join(', ');
+                grouped[orderNum] = {
+                    orderNumber: orderNum, status: row[colMap.status],
+                    name: `${row[colMap.lName] || ''} ${row[colMap.fName] || ''}`.trim(),
+                    phone: colMap.phone ? row[colMap.phone] : '',
+                    address: finalAddress,
+                    originalAddress: finalAddress // Eredeti cím elmentése
+                };
+            });
+            return Object.values(grouped);
+        }
 
         function parseAddress(addressString) {
             const parts = addressString.split(',').map(p => p.trim());
-            const postalCodeMatch = parts[parts.length - 1].match(/\d{4}/);
+            const postalCodeMatch = parts.length > 0 ? parts[parts.length - 1].match(/\d{4}/) : null;
             if (parts.length >= 2 && postalCodeMatch) {
                 const postalCode = postalCodeMatch[0];
                 const city = parts[parts.length - 2];
@@ -171,52 +187,57 @@
                 const orderDiv = document.createElement('div');
                 orderDiv.className = 'order-item';
                 orderDiv.dataset.ordernumber = order.orderNumber;
-                const position = getOrderPosition(order.orderNumber);
-                if (position) orderDiv.classList.add('has-order');
-                const hasCoordinates = order.lat && order.lon;
-                if (!hasCoordinates) orderDiv.classList.add('geocoding-failed');
-
-                const travelTime = routeTimes[order.orderNumber];
-                const parsedAddr = parseAddress(order.address);
-
-                orderDiv.innerHTML = `
-                    ${position ? `<div class="order-number-badge">${position}</div>` : ''}
-                    <div class="order-details">
-                        <div class="order-status ${getStatusClass(order.status)}">${order.status}</div>
-                        <div class="order-name">${order.name}</div>
-                        <div class="order-phone">📞 ${order.phone}</div>
-                        <div class="order-address">📍 ${order.address}</div>
-                        ${!hasCoordinates ? '<div class="geocoding-error-message">⚠️ Cím nem található!</div>' : ''}
-                        ${travelTime ? `<div class="order-time">⏱️ Előző címtől: ~${Math.round(travelTime)} perc</div>` : ''}
-                        <div class="order-actions">
-                            <button class="btn btn-action btn-edit">Szerkesztés</button>
-                            ${position ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.address)}" target="_blank" class="order-maps-link">📍 Google Maps</a>` : ''}
-                        </div>
-                    </div>
-                    <div class="edit-form">
-                        <div class="edit-form-group">
-                            <label>Utca, házszám</label>
-                            <input type="text" class="edit-street" value="${parsedAddr.street}">
-                        </div>
-                        <div class="edit-form-group">
-                            <label>Város</label>
-                            <input type="text" class="edit-city" value="${parsedAddr.city}">
-                        </div>
-                        <div class="edit-form-group">
-                            <label>Irányítószám</label>
-                            <input type="text" class="edit-postalcode" value="${parsedAddr.postalCode}">
-                        </div>
-                        <div class="edit-form-buttons">
-                            <button class="btn btn-action btn-cancel-edit">Mégse</button>
-                            <button class="btn btn-action btn-save-geocode">Mentés és Újrakódolás</button>
-                        </div>
-                    </div>
-                `;
-                orderList.appendChild(orderDiv);
+                updateOrderItemView(orderDiv, order); // Teljes renderelés helyett egy frissítő függvényt hívunk
             });
         }
+
+        // --- ÚJ FUNKCIÓ: Egyetlen tétel nézetének frissítése ---
+        function updateOrderItemView(orderDiv, order) {
+            const position = getOrderPosition(order.orderNumber);
+            orderDiv.classList.toggle('has-order', !!position);
+            const hasCoordinates = order.lat && order.lon;
+            orderDiv.classList.toggle('geocoding-failed', !hasCoordinates);
+            orderDiv.classList.remove('editing');
+
+            const travelTime = routeTimes[order.orderNumber];
+            const parsedAddr = parseAddress(order.address);
+
+            orderDiv.innerHTML = `
+                ${position ? `<div class="order-number-badge">${position}</div>` : ''}
+                <div class="order-details">
+                    <div class="order-status ${getStatusClass(order.status)}">${order.status}</div>
+                    <div class="order-name">${order.name}</div>
+                    <div class="order-phone">📞 ${order.phone}</div>
+                    <div class="order-address">📍 ${order.address}</div>
+                    <div class="order-address-original">Eredeti: ${order.originalAddress}</div>
+                    ${!hasCoordinates ? '<div class="geocoding-error-message">⚠️ Cím nem található!</div>' : ''}
+                    ${travelTime ? `<div class="order-time">⏱️ Előző címtől: ~${Math.round(travelTime)} perc</div>` : ''}
+                    <div class="order-actions">
+                        <button class="btn btn-action btn-edit">Szerkesztés</button>
+                        ${position ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.address)}" target="_blank" class="order-maps-link">📍 Google Maps</a>` : ''}
+                    </div>
+                </div>
+                <div class="edit-form">
+                    <div class="edit-form-group">
+                        <label>Utca, házszám</label>
+                        <input type="text" class="edit-street" value="${parsedAddr.street}">
+                    </div>
+                    <div class="edit-form-group">
+                        <label>Város</label>
+                        <input type="text" class="edit-city" value="${parsedAddr.city}">
+                    </div>
+                    <div class="edit-form-group">
+                        <label>Irányítószám</label>
+                        <input type="text" class="edit-postalcode" value="${parsedAddr.postalCode}">
+                    </div>
+                    <div class="edit-form-buttons">
+                        <button class="btn btn-action btn-cancel-edit">Mégse</button>
+                        <button class="btn btn-action btn-save-geocode">Mentés és Újrakódolás</button>
+                    </div>
+                </div>
+            `;
+        }
         
-        // --- MÓDOSÍTOTT ESEMÉNYKEZELŐ ---
         document.getElementById('order-list').addEventListener('click', async (e) => {
             const orderItem = e.target.closest('.order-item');
             if (!orderItem) return;
@@ -230,6 +251,7 @@
             }
             else if (e.target.classList.contains('btn-save-geocode')) {
                 const button = e.target;
+                const originalButtonText = button.textContent;
                 button.textContent = 'Kódolás...';
                 button.disabled = true;
                 button.classList.remove('success', 'error');
@@ -256,9 +278,8 @@
                     button.classList.add('error');
                 }
                 
-                // Várakozás a visszajelzés elolvasására, majd frissítés
                 setTimeout(() => {
-                    renderOrders();
+                    updateOrderItemView(orderItem, order); // Csak ezt az egy elemet frissítjük!
                     updateMap();
                     updateStats();
                 }, 2000);
@@ -268,7 +289,9 @@
             }
         });
         
-        // --- A maradék kód (updateMap, updateStats, gombok eseménykezelői) változatlan ---
+        // --- A maradék kód (initMap, updateMap, updateStats, stb.) nagyrészt változatlan ---
+        function initMap() { try { map = L.map('map').setView([47.1625, 19.5033], 7); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors', maxZoom: 19 }).addTo(map); setTimeout(() => map.invalidateSize(), 100); } catch (e) { console.error('Térkép hiba:', e); } }
+        async function getOSRMRoute(coordinates) { try { const coords = coordinates.map(c => `${c.lon},${c.lat}`).join(';'); const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 10000); const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`, { signal: controller.signal }); clearTimeout(timeout); const data = await response.json(); if (data.code === 'Ok' && data.routes?.length > 0) { const route = data.routes[0]; return { distance: route.distance / 1000, duration: route.duration / 60, geometry: route.geometry.coordinates }; } } catch (e) { console.error('OSRM hiba:', e); } return null; }
         document.getElementById('file-upload').addEventListener('change', async function(e){const t=e.target.files[0];if(!t)return;document.getElementById('file-name').textContent=t.name;const n=new FileReader;n.onload=async function(e){try{const t=new Uint8Array(e.target.result),n=XLSX.read(t,{type:"array"}),o=XLSX.utils.sheet_to_json(n.Sheets[n.SheetNames[0]]);if(document.getElementById("order-list").innerHTML='<div class="no-data">Rendelések feldolgozása...</div>',orders=processRawWooCommerce(o),ordersToGeocode=orders.filter(e=>getSelectedStatuses().includes(e.status)),0===ordersToGeocode.length)return document.getElementById("order-list").innerHTML='<div class="no-data">Nincs geokódolható rendelés.</div>',void updateStats();const r=document.createElement("div");r.className="no-data",r.innerHTML=`<div>Címek geokódolása...</div><div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div><div><span id="geocode-progress">0</span>/${ordersToGeocode.length}</div>`,document.getElementById("order-list").innerHTML="",document.getElementById("order-list").appendChild(r);for(let e=0;e<ordersToGeocode.length;e++){const t=ordersToGeocode[e],n=await geocodeAddress(t.address);n&&(t.lat=n.lat,t.lon=n.lon);const o=((e+1)/ordersToGeocode.length*100).toFixed(0);document.getElementById("progress-fill").style.width=o+"%",document.getElementById("geocode-progress").textContent=e+1,await new Promise(e=>setTimeout(e,1100))}renderOrders(),updateMap(),updateStats()}catch(e){console.error("Hiba a fájl feldolgozása során:",e),document.getElementById("order-list").innerHTML='<div class="no-data" style="color: red;">Fájlfeldolgozási hiba!</div>'}},n.readAsArrayBuffer(t)});
         function updateMap(){if(!map)return;markers.forEach(e=>map.removeLayer(e)),markers=[],routePolyline&&(map.removeLayer(routePolyline),routePolyline=null);const e=getFilteredOrders().filter(e=>e.lat&&e.lon);if(0!==e.length){e.forEach(e=>{const t=getOrderPosition(e.orderNumber),n={Teljesítve:"green","Feldolgozás alatt":"orange","Fizetés folyamatban":"blue","Fizetés előtt":"red"}[e.status]||"gray",o=t?`<div style="background-color:${n};width:32px;height:32px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px;">${t}</div>`:`<div style="background-color:${n};width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,.5);"></div>`,r=L.divIcon({className:"custom-marker",html:o,iconSize:t?[32,32]:[12,12]}),s=L.marker([e.lat,e.lon],{icon:r}).bindPopup(`<strong>${e.name}</strong><br>📞 ${e.phone}<br>📍 ${e.address}`).addTo(map);s.on("click",()=>toggleOrderSequence(e.orderNumber)),markers.push(s)});const t=L.featureGroup(markers);map.fitBounds(t.getBounds().pad(.1))}}
         function updateStats(){const e=getFilteredOrders(),t=e.filter(e=>e.lat&&e.lon).length;document.getElementById("total-orders").textContent=e.length,document.getElementById("geocoded-count").textContent=t,document.getElementById("ordered-count").textContent=orderedStops.length,document.getElementById("calculate-route-btn").disabled=orderedStops.length<2,document.getElementById("copy-list-btn").disabled=0===orderedStops.length}
