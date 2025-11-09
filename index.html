@@ -86,7 +86,7 @@
         }
         
         function loadGoogleMapsScript() {
-            if (typeof GOOGLE_API_KEY === 'undefined' || GOOGLE_API_KEY === 'IDE_ILLESZD_BE_AZ_UJ_BIZTONSAGOS_API_KULCSODAT') {
+            if (typeof GOOGLE_API_KEY === 'undefined' || GOOGLE_API_KEY.includes('IDE_ILLESZD_BE')) {
                 alert('HIBA: Az API kulcs nincs megadva a config.js fájlban!');
                 return;
             }
@@ -122,44 +122,43 @@
             return columns.find(col => keywords.every(kw => col.toLowerCase().includes(kw.toLowerCase())));
         }
 
-        // --- JAVÍTOTT, ROBUZTUS ADATFELDOLGOZÓ ---
+        // --- NAGYON FONTOS JAVÍTÁS ITT ---
         function processRawWooCommerce(rawData) {
             const columns = Object.keys(rawData[0]);
             
             const colMap = {
                 num: findColumn(columns, ['order', 'number']),
                 status: findColumn(columns, ['order', 'status']),
-                fName: findColumn(columns, ['first', 'shipping']),
-                lName: findColumn(columns, ['last', 'shipping']),
-                addr: findColumn(columns, ['address 1&2 (shipping)']), // Pontosabb egyezés
-                city: findColumn(columns, ['city', 'shipping']),
-                postcode: findColumn(columns, ['postcode', 'shipping']),
+                fName_s: findColumn(columns, ['first name (shipping)']),
+                lName_s: findColumn(columns, ['last name (shipping)']),
+                addr_s: findColumn(columns, ['address 1&2 (shipping)']),
+                city_s: findColumn(columns, ['city (shipping)']),
+                postcode_s: findColumn(columns, ['postcode (shipping)']),
                 phone: findColumn(columns, ['phone', 'shipping']) || findColumn(columns, ['phone', 'billing'])
             };
-            
+
             const grouped = {};
             rawData.forEach(row => {
                 const orderNum = row[colMap.num];
                 if (!orderNum || grouped[orderNum]) return;
-
+                
                 const addressParts = [];
-                // Ha van külön cím, város, irányítószám, azokat használjuk
-                if (row[colMap.addr] || row[colMap.city] || row[colMap.postcode]) {
-                    if (row[colMap.addr]) addressParts.push(String(row[colMap.addr]).trim());
-                    if (row[colMap.city]) addressParts.push(String(row[colMap.city]).trim());
-                    if (row[colMap.postcode]) addressParts.push(String(row[colMap.postcode]).trim());
-                } else {
-                    // Fallback: Ha nincs, megpróbáljuk az általános 'address' oszlopot
-                    const generalAddressCol = findColumn(columns, ['address']);
-                    if (row[generalAddressCol]) addressParts.push(String(row[generalAddressCol]).trim());
+                if (row[colMap.addr_s]) addressParts.push(String(row[colMap.addr_s]).trim());
+                if (row[colMap.city_s]) addressParts.push(String(row[colMap.city_s]).trim());
+                if (row[colMap.postcode_s]) addressParts.push(String(row[colMap.postcode_s]).trim());
+                
+                let finalAddress = addressParts.join(', ');
+
+                // Végső mentsvár: ha a fenti részek üresek, de van valamilyen 'Address' oszlop
+                if (!finalAddress) {
+                    const anyAddrCol = findColumn(columns, ['address']);
+                    if (row[anyAddrCol]) finalAddress = String(row[anyAddrCol]).trim();
                 }
 
-                const finalAddress = addressParts.join(', ');
-                
                 grouped[orderNum] = {
                     orderNumber: orderNum,
                     status: row[colMap.status] || 'Ismeretlen',
-                    name: `${row[colMap.lName] || ''} ${row[colMap.fName] || ''}`.trim(),
+                    name: `${row[colMap.lName_s] || ''} ${row[colMap.fName_s] || ''}`.trim(),
                     phone: colMap.phone ? String(row[colMap.phone]) : '',
                     address: finalAddress,
                     originalAddress: finalAddress,
@@ -184,13 +183,10 @@
 
         async function geocodeSingleOrder(orderNumber, address) {
             const order = orders.find(o => o.orderNumber === orderNumber);
-            if (!order || !address) return false;
+            if (!order || !address || address.trim() === '') return false;
             
             try {
-                const request = {
-                    address: address,
-                    componentRestrictions: { country: 'HU' }
-                };
+                const request = { address: address, componentRestrictions: { country: 'HU' } };
                 const { results } = await geocoder.geocode(request);
                 if (results && results[0]) {
                     order.location = results[0].geometry.location;
@@ -348,8 +344,8 @@
         }
 
         function getStatusClass(status) { 
-            const statusMap = { 'Teljesítve': 'status-teljesitve', 'Feldolgozás alatt': 'status-feldgozas', 'Fizetés folyamatban': 'status-fizetes-folyamatban', 'Fizetés előtt': 'status-fizetes-elott' };
-            return statusMap[status] || 'status-feldgozas'; 
+            const statusMap = { 'Teljesítve': 'status-teljesitve', 'Feldolgozás alatt': 'status-feldolgozas', 'Fizetés folyamatban': 'status-fizetes-folyamatban', 'Fizetés előtt': 'status-fizetes-elott' };
+            return statusMap[status] || 'status-feldolgozas'; 
         }
         
     </script>
