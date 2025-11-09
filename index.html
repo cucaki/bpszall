@@ -606,7 +606,19 @@
                     const addressParts = [];
                     
                     if (row[shippingAddrCol]) addressParts.push(row[shippingAddrCol]);
-                    if (row[shippingCityCol]) addressParts.push(row[shippingCityCol]);
+                    
+                    // --- JAVÍTÁS ITT KEZDŐDIK ---
+                    if (row[shippingCityCol]) {
+                        let city = String(row[shippingCityCol]).trim();
+                        // Ha a város Budapest, tisztítsuk meg a kerület jelöléstől,
+                        // mert az megzavarja a geokódolót.
+                        if (city.toLowerCase().includes('budapest')) {
+                            city = 'Budapest';
+                        }
+                        addressParts.push(city);
+                    }
+                    // --- JAVÍTÁS ITT ÉR VÉGET ---
+                    
                     if (row[shippingPostcodeCol]) addressParts.push(row[shippingPostcodeCol]);
                     
                     const fullAddress = addressParts.join(', ');
