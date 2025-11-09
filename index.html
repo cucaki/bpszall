@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bug Palace - Szállítási Lista (Google Maps)</title>
+    <title>Szállítási Lista Optimalizáló</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -44,7 +46,7 @@
         .btn-cancel-edit { background-color: #6c757d; color: white; }
         .btn-save-geocode.success { background-color: #28a745 !important; }
         .btn-save-geocode.error { background-color: #dc3545 !important; }
-        #map { height: calc(100vh - 150px); width: 100%; border-radius: 8px; }
+        #map { height: calc(100vh - 150px); width: 100%; border-radius: 8px; background-color: #e0e0e0; }
         .info-box, .warning-box { padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; }
         .info-box { background: #e3f2fd; color: #1976d2; }
         .warning-box { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
@@ -68,34 +70,20 @@
         </div>
     </div>
     
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="config.js"></script>
 
     <script>
-        let map, geocoder, autocomplete;
+        let map;
         let orders = [], markers = [], orderedStops = [];
 
         function initMap() {
-            map = new google.maps.Map(document.getElementById("map"), {
-                center: { lat: 47.1625, lng: 19.5033 },
-                zoom: 7,
-                mapTypeControl: false,
-                streetViewControl: false
-            });
-            geocoder = new google.maps.Geocoder();
+            map = L.map('map').setView([47.1625, 19.5033], 7);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
         }
-        
-        function loadGoogleMapsScript() {
-            if (typeof GOOGLE_API_KEY === 'undefined' || GOOGLE_API_KEY.includes('IDE_ILLESZD_BE')) {
-                alert('HIBA: Az API kulcs nincs megadva a config.js fájlban!');
-                return;
-            }
-            const script = document.createElement('script');
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_API_KEY}&libraries=places&callback=initMap`;
-            script.async = true;
-            document.head.appendChild(script);
-        }
-        window.onload = loadGoogleMapsScript;
+        window.onload = initMap;
 
         document.getElementById('file-upload').addEventListener('change', async function(e) {
             const file = e.target.files[0];
@@ -126,7 +114,6 @@
         function processRawWooCommerce(rawData) {
             const columns = Object.keys(rawData[0]);
             
-            // Rugalmas kulcsszavas keresés
             const colMap = {
                 num: findColumn(columns, ['order', 'number']),
                 status: findColumn(columns, ['order', 'status']),
@@ -148,7 +135,12 @@
                 if (row[colMap.city]) addressParts.push(String(row[colMap.city]).trim());
                 if (row[colMap.postcode]) addressParts.push(String(row[colMap.postcode]).trim());
                 
-                const finalAddress = addressParts.join(', ');
+                let finalAddress = addressParts.join(', ');
+
+                if (!finalAddress) {
+                    const anyAddrCol = findColumn(columns, ['address']);
+                    if (row[anyAddrCol]) finalAddress = String(row[anyAddrCol]).trim();
+                }
 
                 grouped[orderNum] = {
                     orderNumber: orderNum,
@@ -164,36 +156,34 @@
         }
 
 
+        async function geocodeAddress(address) {
+            if (!address || address.trim() === '') return null;
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&countrycodes=hu&limit=1`);
+                const data = await response.json();
+                if (data && data.length > 0) {
+                    return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+                }
+            } catch (error) {
+                console.error('Geokódolási hiba:', error);
+            }
+            return null;
+        }
+
         async function geocodeAllOrders() {
             for (let i = 0; i < orders.length; i++) {
                 const order = orders[i];
-                const success = await geocodeSingleOrder(order.orderNumber, order.address);
+                const location = await geocodeAddress(order.address);
+                if (location) {
+                    order.location = location;
+                }
                 const orderDiv = document.querySelector(`.order-item[data-ordernumber="${order.orderNumber}"]`);
                 if (orderDiv) {
                     updateOrderItemView(orderDiv, order);
                 }
-                await new Promise(resolve => setTimeout(resolve, 50));
+                await new Promise(resolve => setTimeout(resolve, 1100)); // Rate limit
             }
             updateMapAndMarkers();
-        }
-
-        async function geocodeSingleOrder(orderNumber, address) {
-            const order = orders.find(o => o.orderNumber === orderNumber);
-            if (!order || !address || address.trim() === '') return false;
-            
-            try {
-                const request = { address: address, componentRestrictions: { country: 'HU' } };
-                const { results } = await geocoder.geocode(request);
-                if (results && results[0]) {
-                    order.location = results[0].geometry.location;
-                    order.address = results[0].formatted_address;
-                    return true;
-                }
-            } catch (error) {
-                console.error(`Geokódolási hiba a ${orderNumber} rendelsnél:`, error);
-            }
-            order.location = null;
-            return false;
         }
         
         function renderSidebar() {
@@ -231,8 +221,16 @@
                 </div>
                 <div class="edit-form">
                     <div class="edit-form-group">
-                        <label>Cím keresése (kezdj el gépelni)</label>
-                        <input type="text" class="edit-address-autocomplete" value="${order.address}">
+                        <label>Utca, házszám</label>
+                        <input type="text" class="edit-street" value="">
+                    </div>
+                    <div class="edit-form-group">
+                        <label>Város</label>
+                        <input type="text" class="edit-city" value="">
+                    </div>
+                     <div class="edit-form-group">
+                        <label>Irányítószám</label>
+                        <input type="text" class="edit-postcode" value="">
                     </div>
                     <div class="edit-form-buttons">
                         <button class="btn-action btn-cancel-edit">Mégse</button>
@@ -249,12 +247,6 @@
 
             if (e.target.classList.contains('btn-edit')) {
                 orderItem.classList.add('editing');
-                const input = orderItem.querySelector('.edit-address-autocomplete');
-                autocomplete = new google.maps.places.Autocomplete(input, {
-                    componentRestrictions: { country: "hu" },
-                    fields: ["formatted_address"],
-                });
-                input.focus();
             }
             else if (e.target.classList.contains('btn-cancel-edit')) {
                 orderItem.classList.remove('editing');
@@ -264,14 +256,29 @@
                 button.textContent = 'Kódolás...';
                 button.disabled = true;
 
-                const addressInput = orderItem.querySelector('.edit-address-autocomplete').value;
-                const success = await geocodeSingleOrder(orderNumber, addressInput);
+                const order = orders.find(o => o.orderNumber === orderNumber);
+                const street = orderItem.querySelector('.edit-street').value.trim();
+                const city = orderItem.querySelector('.edit-city').value.trim();
+                const postcode = orderItem.querySelector('.edit-postcode').value.trim();
+                
+                const newAddress = [street, city, postcode].filter(Boolean).join(', ');
+                order.address = newAddress || order.originalAddress;
+
+                const location = await geocodeAddress(order.address);
+                const success = !!location;
+
+                if (success) {
+                    order.location = location;
+                } else {
+                    order.location = null;
+                    const indexInStops = orderedStops.indexOf(orderNumber);
+                    if (indexInStops > -1) orderedStops.splice(indexInStops, 1);
+                }
                 
                 button.textContent = success ? '✓ Sikeres!' : '❌ Hiba!';
                 button.classList.add(success ? 'success' : 'error');
                 
                 setTimeout(() => {
-                    const order = orders.find(o => o.orderNumber === orderNumber);
                     updateOrderItemView(orderItem, order);
                     updateMapAndMarkers();
                 }, 1500);
@@ -292,6 +299,33 @@
                 orderedStops.push(orderNumber);
             }
             updateMapAndMarkers();
+        }
+
+        function updateMapAndMarkers() {
+            markers.forEach(marker => map.removeLayer(marker));
+            markers = [];
+            
+            const geocodedOrders = orders.filter(o => o.location);
+            if(geocodedOrders.length === 0) {
+                map.setView([47.1625, 19.5033], 7);
+                return;
+            };
+
+            geocodedOrders.forEach(order => {
+                const position = orderedStops.indexOf(order.orderNumber) + 1;
+                const iconHtml = position ? `<div style="background-color: #007bff; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5);">${position}</div>` : '';
+                const marker = L.marker([order.location.lat, order.location.lon], {
+                    icon: L.divIcon({ className: 'custom-marker', html: iconHtml, iconSize: [30, 30], iconAnchor: [15, 15] })
+                }).addTo(map);
+
+                marker.bindPopup(`<b>${order.name}</b><br>${order.address}`);
+                markers.push(marker);
+            });
+            
+            const group = L.featureGroup(markers);
+            map.fitBounds(group.getBounds().pad(0.1));
+
+            // Frissítsük a lista nézetet is a sorrend miatt
             document.querySelectorAll('.order-item').forEach(div => {
                 const num = Number(div.dataset.ordernumber);
                 const pos = orderedStops.indexOf(num) + 1;
@@ -305,38 +339,6 @@
                     if (badge) badge.remove();
                 }
             });
-        }
-
-        function updateMapAndMarkers() {
-            markers.forEach(marker => marker.setMap(null));
-            markers = [];
-            const bounds = new google.maps.LatLngBounds();
-            const geocodedOrders = orders.filter(o => o.location);
-            
-            if(geocodedOrders.length === 0) {
-                map.setCenter({ lat: 47.1625, lng: 19.5033 });
-                map.setZoom(7);
-                return;
-            };
-
-            geocodedOrders.forEach(order => {
-                const position = orderedStops.indexOf(order.orderNumber) + 1;
-                const marker = new google.maps.Marker({
-                    position: order.location,
-                    map: map,
-                    label: position ? String(position) : '',
-                    title: order.name,
-                });
-                markers.push(marker);
-                bounds.extend(order.location);
-            });
-            
-            if (geocodedOrders.length > 1) {
-                 map.fitBounds(bounds);
-            } else if (geocodedOrders.length === 1) {
-                map.setCenter(bounds.getCenter());
-                map.setZoom(15);
-            }
         }
 
         function getStatusClass(status) { 
